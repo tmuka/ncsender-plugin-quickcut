@@ -1433,6 +1433,18 @@
     box-shadow: none;
   }
   /* "Measure" link beside each pattern Angle label. */
+  /* Tool change row: the Tool menu, the M6 switch, and a note when Bit
+     Diameter isn't the picked tool's. */
+  .qc-tool-change-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 12px;
+    align-items: end;
+    margin-top: 8px;
+  }
+  .qc-tool-change-row .qc-select { width: 100%; min-width: 0; text-overflow: ellipsis; }
+  .qc-tool-note { grid-column: 1 / -1; margin: 0; font-size: 0.8rem; color: var(--color-warning, #d9a441); }
+  .qc-tool-note:empty { display: none; }
   /* Bit Diameter's label reads the loaded tool's diameter when clicked. */
   .qc-bit-label {
     cursor: pointer;
@@ -1558,6 +1570,20 @@
                 <label for="qc-plunge">Plunge Rate</label>
                 <input class="qc-input" type="text" autocomplete="off" spellcheck="false" data-unit="feed" id="qc-plunge" min="1" step="1" value="1000" required title="How fast the bit moves down into the material.">
               </div>
+            </div>
+            <div class="qc-tool-change-row" id="qc-tool-change-row" style="display: none;">
+              <div class="qc-field">
+                <label for="qc-tool">Tool</label>
+                <select class="qc-select" id="qc-tool" title="A tool from ncSender's tool table, by its T number. Picking one fills in Bit Diameter."></select>
+              </div>
+              <label class="qc-switch-label" title="Start the program with M6 T&lt;n&gt;: ncSender's tool changer loads the tool and sets its length offset (and skips it when that tool is already in).">
+                <span>Change tool (M6)</span>
+                <span class="qc-switch">
+                  <input type="checkbox" id="qc-tool-change" checked>
+                  <span class="qc-switch-track"></span>
+                </span>
+              </label>
+              <p class="qc-tool-note" id="qc-tool-note"></p>
             </div>
           </div>
           <div class="qc-header-card">
@@ -3089,6 +3115,11 @@
     // common across shapes.
     currentTab: 'rectangle',
     toolByShape: {},
+    // A tool changer in ncSender (a plugin or a magazine), how its T numbers
+    // read (Tool ID or slot), and its tools: { number, name, diameter }.
+    toolChanger: false,
+    toolById: false,
+    tools: [],
     // Keepout zones Wasteboard Surfacing can avoid (machine mm):
     // ncSender Pro's and the ATCi plugin's, when they're on.
     keepoutZonesMm: []
@@ -3102,6 +3133,9 @@
       state.isImperial = (s.unitsPreference || 'metric') === 'imperial';
       state.unitLabel = state.isImperial ? 'in' : 'mm';
       state.unitDisplay = state.isImperial ? 'IMPERIAL (in)' : 'METRIC (mm)';
+      var tc = s.tool || {};
+      state.toolChanger = !!(tc.source || Number(tc.count) > 0);
+      state.toolById = tc.numbering === 'toolId';
       var safeZRaw = Number(s.safeZHeight);
       state.safeZHeightMm = isFinite(safeZRaw) ? safeZRaw : null;
       // ncSender Pro's keepout zone, in machine coordinates (mm). Only
@@ -3144,6 +3178,8 @@
     wireValidation();
     wireFocusTips();
     wireInsetModes();
+    wireToolChange();
+    loadToolList();
     $('qc-bit').parentNode.querySelector('.qc-bit-label').addEventListener('click', function(evt) {
       evt.preventDefault();
       useLoadedToolDiameter();
@@ -4121,7 +4157,8 @@
       spindleRpm:     num('qc-rpm', 0),
       spindleDelay:   num('qc-delay', 0),
       mistM7:         $('qc-mist').checked,
-      floodM8:        $('qc-flood').checked
+      floodM8:        $('qc-flood').checked,
+      toolChange:     pickedToolChange()
     };
   }
 
@@ -6089,7 +6126,9 @@
     return {
       bitDiameter:    displayToMm(num('qc-bit', 0)),
       feedRate:       feedMm('qc-feed'),
-      plungeFeedRate: feedMm('qc-plunge')
+      plungeFeedRate: feedMm('qc-plunge'),
+      toolNumber:     menuToolNumber(),
+      toolChange:     $('qc-tool-change').checked
     };
   }
   function writeToolToInputs(tool) {
@@ -6097,6 +6136,87 @@
     if (tool.bitDiameter != null)    $('qc-bit').value    = roundDisplay(mmToDisplay(tool.bitDiameter));
     if (tool.feedRate != null)       writeFeed('qc-feed', tool.feedRate);
     if (tool.plungeFeedRate != null) writeFeed('qc-plunge', tool.plungeFeedRate);
+    if (tool.toolChange != null)     $('qc-tool-change').checked = !!tool.toolChange;
+    applyToolSelection(tool.toolNumber);
+    updateToolNote();
+  }
+
+  // Tool change (M6). Shown when ncSender has a tool changer (a plugin or a
+  // magazine). The Tool menu lists ncSender's tools by the T number its
+  // Tool Numbering gives (a magazine slot or a Tool ID); picking one fills
+  // in Bit Diameter, and with Change tool on the program starts M6 T<n>.
+  function toolNumberOf(t) { return Number(state.toolById ? t.toolId : t.toolNumber) || 0; }
+  function toolByNumber(n) { return state.tools.filter(function(t) { return t.number === Number(n); })[0] || null; }
+  // The Tool menu's number; until ncSender's tool list has arrived, the
+  // tab's saved one, so reading the form early doesn't forget it.
+  function menuToolNumber() {
+    if (!state.toolsLoaded) { var saved = state.toolByShape[state.currentTab]; return saved && saved.toolNumber != null ? saved.toolNumber : null; }
+    return Number($('qc-tool').value) || null;
+  }
+  function selectTool(n) {
+    var sel = $('qc-tool');
+    sel.value = n != null && toolByNumber(n) ? String(n) : '';
+  }
+  // A tab's saved tool; or else the one loaded now, but only when it's the
+  // Bit Diameter already set, so no M6 goes out for a bit the cut wasn't
+  // planned for.
+  function applyToolSelection(saved) {
+    if (!state.toolsLoaded) return;
+    if (saved != null) { selectTool(saved); return; }
+    var now = toolByNumber(state.loadedTool);
+    var fits = now && now.diameter > 0 && Math.abs(displayToMm(num('qc-bit', 0)) - now.diameter) <= 0.001;
+    selectTool(fits ? state.loadedTool : null);
+  }
+  function pickedToolChange() {
+    var tool = state.toolChanger && $('qc-tool-change').checked ? toolByNumber($('qc-tool').value) : null;
+    return tool ? { number: tool.number, name: tool.name } : null;
+  }
+  // A note when Bit Diameter isn't the picked tool's.
+  function updateToolNote() {
+    var tool = toolByNumber($('qc-tool').value), note = $('qc-tool-note');
+    var off = tool && tool.diameter > 0 && Math.abs(displayToMm(num('qc-bit', 0)) - tool.diameter) > 0.001;
+    note.textContent = off ? 'Bit Diameter isn\u2019t T' + tool.number + '\u2019s (' + roundDisplay(mmToDisplay(tool.diameter)) + ' ' + state.unitLabel + ').' : '';
+  }
+  async function loadToolList() {
+    if (!state.toolChanger) return;
+    var loaded = 0;
+    try {
+      var tools = await (await fetch(BASE_URL + '/api/tools/active')).json();
+      state.tools = (tools || []).filter(function(t) { return toolNumberOf(t) > 0; })
+        .map(function(t) { return { number: toolNumberOf(t), name: t.name || '', diameter: Number(t.diameter) || 0 }; })
+        .sort(function(a, b) { return a.number - b.number; });
+      var st = await (await fetch(BASE_URL + '/api/server-state')).json();
+      loaded = Number(st && st.machineState && st.machineState.tool) || 0;
+    } catch (e) { state.tools = []; }
+    var sel = $('qc-tool');
+    sel.textContent = '';
+    var none = document.createElement('option');
+    none.value = '';
+    none.textContent = 'Pick a tool';
+    sel.appendChild(none);
+    state.tools.forEach(function(t) {
+      var o = document.createElement('option');
+      o.value = String(t.number);
+      o.textContent = 'T' + t.number + (t.name ? ' ' + t.name : '');
+      sel.appendChild(o);
+    });
+    $('qc-tool-change-row').style.display = state.tools.length ? '' : 'none';
+    state.toolsLoaded = true;
+    state.loadedTool = loaded;
+    var saved = state.toolByShape[state.currentTab];
+    applyToolSelection(saved ? saved.toolNumber : null);
+    updateToolNote();
+  }
+  function wireToolChange() {
+    $('qc-tool').addEventListener('change', function() {
+      var tool = toolByNumber(this.value);
+      if (tool && tool.diameter > 0) {
+        $('qc-bit').value = roundDisplay(mmToDisplay(tool.diameter));
+        $('qc-bit').dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      updateToolNote();
+    });
+    $('qc-bit').addEventListener('input', updateToolNote);
   }
 
   // Old builds saved origin as bottom-left / top-right / etc. Renamed to
@@ -6469,7 +6589,9 @@
     var toolForShape = {
       bitDiameter:    displayToMm(params.bitDiameter),
       feedRate:       feedMm('qc-feed'),
-      plungeFeedRate: feedMm('qc-plunge')
+      plungeFeedRate: feedMm('qc-plunge'),
+      toolNumber:     menuToolNumber(),
+      toolChange:     $('qc-tool-change').checked
     };
     if (params.shape === 'rectangle') {
       body.rectangle = {
@@ -7458,6 +7580,7 @@
       }
       bit.value = roundDisplay(mmToDisplay(tool.diameter));
       bit.dispatchEvent(new Event('input', { bubbles: true }));
+      if (toolByNumber(n)) { selectTool(n); updateToolNote(); }
       var name = (tool.name || '').length > 40 ? tool.name.slice(0, 39) + '\u2026' : tool.name || '';
       showTooltip(bit, 'T' + n + (name ? ': ' + name : '') + ' (' + bit.value + ' ' + state.unitLabel + ')', TOOLTIP_OK, true);
     } catch (e) {
@@ -9699,6 +9822,7 @@
       '<strong>Feed Rate</strong> is for moves in X and Y; <strong>Plunge Rate</strong> for moves down in Z. <strong>Delay</strong> waits after starting the spindle so it reaches speed. <strong>Mist</strong> and <strong>Flood</strong> turn on coolant (M7 / M8).',
       'Each tab remembers its own tool settings, and the values you last generated with.',
       'Click the <strong>Bit Diameter</strong> label to fill in the loaded tool&rsquo;s diameter from ncSender&rsquo;s tool table (the tool your Tool Numbering setting names, by slot or Tool ID).',
+      'With a tool changer set up in ncSender, the Tool card adds a <strong>Tool</strong> menu of ncSender&rsquo;s tools (by slot or Tool ID, as your Tool Numbering reads them) and a <strong>Change tool (M6)</strong> switch. Picking a tool fills in Bit Diameter; with the switch on, the program starts with <code>M6 T&lt;n&gt;</code>, so ncSender&rsquo;s tool changer loads the tool and sets its length offset (and skips it when that tool is already in). The loaded tool is picked for you when its diameter matches Bit Diameter, and a note warns when Bit Diameter isn&rsquo;t the picked tool&rsquo;s. Without a tool changer, programs have no tool change, as before.',
       '<strong>Save to File Manager</strong> also saves each program to File Manager &rsaquo; QuickCut.',
       '<strong>Load</strong> fills a tab from a QuickCut program in File Manager: every program records the settings it was made with in a few comment lines after M30. Pick one, check the values, then Generate. Share a program file and someone else can Load its settings too.' ] },
     units: { title: 'Typing units', notes: [
@@ -10111,6 +10235,7 @@
         for (var i = 0; i < opts.extraComments.length; i++) lines.push(comment(opts.extraComments[i]));
       }
       if (params.cutType) lines.push(comment('Cut Type: ' + params.cutType));
+      if (toolChangeNumber(params)) lines.push(comment('Tool: T' + toolChangeNumber(params) + (params.toolChange.name ? ' ' + params.toolChange.name : '')));
       lines.push('(Bit Diameter: ' + params.bitDiameter + unitsLabel + ')');
       lines.push('(Feed Rate: ' + params.feedRate + unitsLabel + '/min, Spindle: ' + params.spindleRpm + 'RPM)');
       lines.push('');
@@ -10141,8 +10266,20 @@
       return lines;
     }
 
+    // toolChange: { number, name } puts an M6 T<number> first, before
+    // coolant and the spindle: ncSender hands it to the tool changer, which
+    // loads the tool and sets its length offset (and skips it when that tool
+    // is already in). The number is T as ncSender reads it (a magazine slot
+    // or a Tool ID, per its Tool Numbering).
+    function toolChangeNumber(params) {
+      var t = params.toolChange;
+      var n = t && Math.floor(Number(t.number));
+      return n > 0 ? n : 0;
+    }
+
     function startupBlock(params) {
       var lines = [];
+      if (toolChangeNumber(params)) lines.push('M6 T' + toolChangeNumber(params) + ' ; Tool change');
       if (params.mistM7) lines.push('M7 ; Mist coolant on');
       if (params.floodM8) lines.push('M8 ; Flood coolant on');
       if (params.spindleRpm > 0) {

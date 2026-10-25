@@ -2789,3 +2789,27 @@ test('a Center Inset changes only the axis it is on: a triangle keeps its Y on a
     bitDiameter: 6, depth: 1, depthOfCut: 1, origin: 'center', inset: inset, pattern: { enabled: false } })));
   assert.deepEqual(c({ x: 5, y: 5, to: 'center', both: true }), c(0));
 });
+
+test('tool change: M6 T<n> before coolant and spindle, the tool named in the header', () => {
+  const gen = makeQuickCutGenerator(false);
+  const params = (extra) => baseParams(Object.assign({
+    width: 20, height: 10, cornerRadius: 0, cutType: 'inner', bitDiameter: 6, depth: 1, depthOfCut: 1, origin: 'center',
+    spindleRpm: 18000, spindleDelay: 2, floodM8: true
+  }, extra));
+  const g = gen.generateRectangleProgram(params({ toolChange: { number: 33, name: '3/8in keyhole (.25 shank)' } }));
+  const lines = g.split('\n');
+  assert.match(g, /^\(Tool: T33 3\/8in keyhole \[\.25 shank\]\)$/m);
+  const m6 = lines.indexOf('M6 T33 ; Tool change');
+  assert.ok(m6 > 0, 'M6 T33');
+  assert.ok(m6 < lines.findIndex(l => /^M8\b/.test(l)) && m6 < lines.findIndex(l => /^M3\b/.test(l)), 'M6 before coolant and spindle');
+  assert.ok(m6 > lines.findIndex(l => /^G53 G0 Z0/.test(l)), 'after the move to safe Z');
+  // Without one (or with no number) the program is exactly as before.
+  const plain = gen.generateRectangleProgram(params({}));
+  assert.equal(gen.generateRectangleProgram(params({ toolChange: null })), plain);
+  assert.equal(gen.generateRectangleProgram(params({ toolChange: { number: 0 } })), plain);
+  assert.ok(!/M6/.test(plain));
+  // Every program gets it.
+  for (const [fn, p] of [['generateDrillProgram', { depth: 3, peckDepth: 0 }], ['generateCircleProgram', { diameter: 20, cutType: 'inner', depth: 1, depthOfCut: 1 }]]) {
+    assert.match(gen[fn](baseParams(Object.assign({ bitDiameter: 6, spindleRpm: 18000, toolChange: { number: 7 } }, p))), /^M6 T7 ; Tool change$/m, fn);
+  }
+});
