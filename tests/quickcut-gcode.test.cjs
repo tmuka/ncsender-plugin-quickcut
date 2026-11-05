@@ -3696,3 +3696,11 @@ test('a Centre line slot, or a shape that can\'t be drawn, refuses the chamfer',
   assert.match(star, /inner diameter must be less than the diameter; nothing to cut/);
   assert.doesNotMatch(star, /^G[0123] [XYZ]/m);
 });
+
+test('a controller spindle delay ($394) replaces the G4 wait', () => {
+  const gen = makeQuickCutGenerator(false).generateRectangleProgram;
+  assert.match(gen(baseParams()), /^G4 P1 ; Wait 1 seconds$/m);
+  const gcode = gen(baseParams({ firmwareSpindleDelay: 3 }));
+  assert.doesNotMatch(gcode, /^G4 /m);
+  assert.match(gcode, /^M3 S15000 ; Start spindle\n; The controller waits 3 seconds \(\$394\)$/m);
+});
