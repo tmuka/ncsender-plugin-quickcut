@@ -1737,6 +1737,32 @@ test('drill short-retract peck only backs off to break the chip', () => {
   assert.match(gcode, /^G1 Z-10\.000 F150\nG4 P0\.5 ; Dwell\nG0 Z5\.000$/m);
 });
 
+test('drill Full-Width Depth: the point goes deeper by the tip, pecks counted to it', () => {
+  const g = makeQuickCutGenerator(false);
+  // 5 mm, 118°: 2.5 / tan(59°) = 1.502 mm of tip.
+  assert.ok(Math.abs(g.drillTipLength({ depthMode: 'full', tipAngle: 118, bitDiameter: 5 }) - 1.5022) < 1e-4);
+  const gcode = g.generateDrillProgram(drillBase({ depthMode: 'full', tipAngle: 118, peckDepth: 10 }));
+  const z = keyholeMoves(gcode).filter(m => m.z != null).map(m => m.cmd + m.z);
+  assert.deepEqual(z, ['G05', 'G02', 'G1-10', 'G02', 'G0-9.5', 'G1-11.502', 'G05']);
+  assert.match(gcode, /\(Depth: 10mm at full width, the tip to 11\.502mm for a 118° point\)/);
+});
+
+test('drill Full-Width Depth adds nothing for a flat bit, and Total Depth is to the point', () => {
+  const g = makeQuickCutGenerator(false);
+  for (const p of [{ depthMode: 'full', tipAngle: 180 }, { depthMode: 'tip', tipAngle: 118 }, {}]) {
+    const gcode = g.generateDrillProgram(drillBase(p));
+    assert.match(gcode, /^G1 Z-10\.000 F150$/m);
+    assert.match(gcode, /\(Depth: 10mm\)/);
+  }
+});
+
+test('drill Full-Width Depth in inches', () => {
+  const g = makeQuickCutGenerator(true);
+  const gcode = g.generateDrillProgram(drillBase({ bitDiameter: 0.25, depth: 0.75, plungeFeedRate: 20, depthMode: 'full', tipAngle: 135 }));
+  // 0.125 / tan(67.5°) = 0.0518
+  assert.match(gcode, /^G1 Z-0\.802 F20$/m);
+});
+
 test('drill pattern: origin anchors the box around all the holes, as on Circle', () => {
   const g = makeQuickCutGenerator(false);
   const params = (origin) => drillBase({
