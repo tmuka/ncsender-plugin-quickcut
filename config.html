@@ -2915,11 +2915,11 @@
               <div class="qc-shape-fields">
                 <div class="qc-row-2">
                   <div class="qc-field">
-                    <select class="qc-label-select" id="qc-drl-depth-mode" aria-label="Depth measured to" title="Total Depth: how deep the bit's point goes. Full-Width Depth: how deep the hole is at its full diameter, so a drill's point goes deeper by the length of its tip, e.g. for a hole all the way through at full size. The Tip Angle comes from the tool table.">
+                    <select class="qc-label-select" id="qc-drl-depth-mode" aria-label="Depth measured to" title="Total Depth: how deep the bit's point goes. Drill Tip Through, as Fusion 360's Drill tip through bottom: the hole is its full diameter all the way to the depth, so a drill's point goes deeper by the length of its tip, e.g. for a hole right through the stock at full size. The Tip Angle comes from the tool table.">
                       <option value="tip" selected>Total Depth</option>
-                      <option value="full">Full-Width Depth</option>
+                      <option value="full">Drill Tip Through</option>
                     </select>
-                    <input class="qc-input" type="text" autocomplete="off" spellcheck="false" data-unit="length" id="qc-drl-depth" min="0.001" step="0.01" value="10" required aria-labelledby="qc-drl-depth-mode" title="How deep the hole goes below Z0, the top of the stock: to the bit's point, or with Full-Width Depth, to where the hole is still its full diameter.">
+                    <input class="qc-input" type="text" autocomplete="off" spellcheck="false" data-unit="length" id="qc-drl-depth" min="0.001" step="0.01" value="10" required aria-labelledby="qc-drl-depth-mode" title="How deep the hole goes below Z0, the top of the stock: to the bit's point, or with Drill Tip Through, to where the hole is still its full diameter.">
                   </div>
                   <div class="qc-field">
                     <label for="qc-drl-peck">Peck Depth</label>
@@ -12176,7 +12176,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       'X0 Y0 starts at the <strong>plunge hole</strong>; tap it on the preview to go back to it. The Origin picker&rsquo;s dots are the box around the whole cut, which you can also tap on the preview: a corner, edge midpoint or its center.' ] },
     drill: { name: 'Drill', notes: [
       'Holes the size of the <strong>Bit Diameter</strong>. Every Z move is at the <strong>Plunge Rate</strong>, so Feed Rate is greyed out.',
-      'The <strong>Total Depth</strong> label is a menu. <strong>Total Depth</strong> is how deep the bit&rsquo;s point goes. <strong>Full-Width Depth</strong> is how deep the hole is at its full diameter, so a drill&rsquo;s point goes deeper by the length of its tip, e.g. for a hole right through the stock at full size. Its <strong>Tip Angle</strong> is filled in when you pick a tool in the Bit Diameter menu: a drill&rsquo;s angle from the tool table, else 118&deg;; a V-bit&rsquo;s own angle; 180&deg; for a flat end mill, which adds nothing. The program&rsquo;s first lines give the depth the point reaches.',
+      'The <strong>Total Depth</strong> label is a menu. <strong>Total Depth</strong> is how deep the bit&rsquo;s point goes. <strong>Drill Tip Through</strong>, as Fusion 360&rsquo;s <em>Drill tip through bottom</em>, keeps the hole its full diameter all the way to that depth, so a drill&rsquo;s point goes deeper by the length of its tip, e.g. for a hole right through the stock at full size. Its <strong>Tip Angle</strong> is filled in when you pick a tool in the Bit Diameter menu: a drill&rsquo;s angle from the tool table, else 118&deg;; a V-bit&rsquo;s own angle; 180&deg; for a flat end mill, which adds nothing. The program&rsquo;s first lines give the depth the point reaches.',
       '<strong>Peck Depth</strong> 0 drills in one plunge. Otherwise each peck goes that much deeper, then <strong>Full</strong> lifts above the surface to clear chips, or <strong>Short</strong> backs off 0.5 mm (0.02") to break the chip. <strong>Dwell at Bottom</strong> pauses at full depth.',
       'With a pattern, the Origin is a point of the <strong>box around the holes</strong>, OR tap a hole in the preview to make that hole X0 Y0.',
       HELP_CHAMFER + ' On Drill, the card asks for the <strong>Hole Diameter</strong> (the drill&rsquo;s size, as the Tool card holds the V-bit), and the Feed Rate comes back on for the chamfer&rsquo;s laps; keep the Origin and pattern the drill program used, so each chamfer lands on its hole.' ] },
@@ -16539,8 +16539,9 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     //   break: after each peck, back off 0.5mm to snap the chip.
     // An optional dwell at the bottom cleans up the hole floor.
 
-    // Full-Width Depth: the bit's full width reaches the depth, so its
-    // point goes deeper by the length of its tip (0 for a flat bit, 180°).
+    // Drill Tip Through (Fusion 360's "Drill tip through bottom"): the bit's
+    // full width reaches the depth, so its point goes deeper by the length of
+    // its tip (0 for a flat bit, 180°).
     function drillTipLength(params) {
       var a = params.tipAngle;
       if (params.depthMode !== 'full' || !(a > 0 && a < 180)) return 0;
@@ -16559,7 +16560,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       var origin = resolveDrillOrigin(params.origin, params.pattern, positions, params.bitDiameter, params.inset);
 
       var extras = [
-        'Depth: ' + params.depth + unitsLabel + (tip ? ' at full width, the tip to ' + fixed(depth, 3) + unitsLabel + ' for a ' + params.tipAngle + '° point' : ''),
+        'Depth: ' + params.depth + unitsLabel + (tip ? ', drill tip through, the tip to ' + fixed(depth, 3) + unitsLabel + ' for a ' + params.tipAngle + '° point' : ''),
         'Peck: ' + (peck ? peck + unitsLabel + ', ' + (mode === 'break' ? 'short retract' : 'full retract') : 'none'),
         'Origin: ' + origin.label
       ];
