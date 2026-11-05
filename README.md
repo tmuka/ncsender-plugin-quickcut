@@ -229,7 +229,7 @@ Cuts a hanging slot with a keyhole (T-slot) bit, the kind used to hang a sign or
 
 Plunges a hole the size of the bit, or one at every position of a [pattern](#patterns): shelf-pin rows, threaded-insert grids, pilot holes.
 
-- Hole diameter is the **Bit Diameter**. Every Z move uses the **Plunge Rate**; Feed Rate isn't used and is greyed out.
+- Hole diameter is the **Bit Diameter**. Every Z move uses the **Plunge Rate**; Feed Rate isn't used and is hidden (it comes back with Chamfer on, whose laps use it).
 - The **Total Depth** label is a menu:
   - **Total Depth** is how deep the bit's point goes.
   - **Drill Tip Through** is for a hole right through at full size: the hole is its full diameter all the way down, and the point goes deeper by the length of its tip (a 6.35 mm, 118° drill goes 1.91 mm deeper). Fusion 360 calls it *Drill tip through bottom*. For a clean exit, make the depth the stock's thickness plus about 0.5 mm (0.02"); the tip is added to that.
