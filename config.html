@@ -622,6 +622,11 @@
     letter-spacing: 0.12em;
     margin: 0;
   }
+  /* The tool picked from the tool table, after "Tool": as named, on one line. */
+  #qc-tool-title { display: flex; align-items: baseline; min-width: 0; }
+  .qc-tool-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    text-transform: none; letter-spacing: 0.01em; font-weight: 600; color: var(--color-text-primary); }
+  .qc-tool-name:not(:empty)::before { content: '\00b7'; padding: 0 0.45em; color: var(--color-text-secondary); }
 
   /* A slim scrollbar like ncSender's own, instead of the system's (a wide
      grey one with arrows on the Pi, none at all on a Mac). */
@@ -1741,7 +1746,7 @@
              layout while keeping input IDs unique. -->
         <div class="qc-header-cards" id="qc-common-cards">
           <div class="qc-header-card">
-            <h4 class="qc-header-card-title">Tool</h4>
+            <h4 class="qc-header-card-title" id="qc-tool-title">Tool<span class="qc-tool-name" id="qc-tool-name"></span></h4>
             <div class="qc-row-3">
               <div class="qc-field">
                 <label for="qc-bit" class="qc-bit-label" title="Click to use the loaded tool's diameter from ncSender's tool table">Bit Diameter</label>
@@ -9160,6 +9165,9 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     // Short, to fit the column: "Bit · T3" while a tool is picked.
     var n = bitToolNumber();
     btn.textContent = n ? 'Bit · T' + n : 'Bit Diameter';
+    // The tool's name after the card's title, while one from the table is picked.
+    var t = n ? (state.tools || []).filter(function(x) { return x.n === n; })[0] : null, name = $('qc-tool-name');
+    if (name) { name.textContent = t && t.name ? t.name : ''; name.title = t && t.name ? 'T' + n + ': ' + t.name : ''; }
     if (toolPop.open) renderToolList();
   }
   // The Tool card takes a tool from the table: flutes first, so the bit's
@@ -12239,7 +12247,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       // showing; they get their own topic, so skip them here.
       if (root !== common && common && common.contains(card)) return;
       var titleEl = card.querySelector('.qc-card-title, .qc-header-card-title');
-      var title = titleEl ? titleEl.textContent.trim() : '';
+      var title = titleEl ? (titleEl.firstChild && titleEl.firstChild.nodeType === 3 ? titleEl.firstChild.textContent : titleEl.textContent).trim() : '';
       var seen = {}, tips = [];
       card.querySelectorAll('[title]').forEach(function(el) {
         var tip = el.getAttribute('data-title') || el.getAttribute('title');
