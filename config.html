@@ -2915,7 +2915,7 @@
               <div class="qc-shape-fields">
                 <div class="qc-row-2">
                   <div class="qc-field">
-                    <select class="qc-label-select" id="qc-drl-depth-mode" aria-label="Depth measured to" title="Total Depth: how deep the bit's point goes. Drill Tip Through, as Fusion 360's Drill tip through bottom: the hole is its full diameter all the way to the depth, so a drill's point goes deeper by the length of its tip, e.g. for a hole right through the stock at full size. The Tip Angle comes from the tool table.">
+                    <select class="qc-label-select" id="qc-drl-depth-mode" aria-label="Depth measured to" title="Total Depth: how deep the bit's point goes. Drill Tip Through: for a hole right through at full size. The hole is its full diameter all the way down, and the point goes deeper by the length of its tip. Fusion 360 calls it Drill tip through bottom.">
                       <option value="tip" selected>Total Depth</option>
                       <option value="full">Drill Tip Through</option>
                     </select>
@@ -2942,7 +2942,7 @@
                 <div class="qc-row-2" id="qc-drl-tip-row" style="display: none;">
                   <div class="qc-field">
                     <label for="qc-drl-tip-angle">Tip Angle (°)</label>
-                    <input class="qc-input" type="number" id="qc-drl-tip-angle" min="1" max="180" step="1" value="118" title="The angle of the bit's point: 118 for most drills, 135 for some; 180 for a flat end mill, which adds nothing. Picking a tool in the Bit Diameter menu fills it from the tool table.">
+                    <input class="qc-input" type="number" id="qc-drl-tip-angle" min="60" max="180" step="1" value="118" title="The angle of the bit's point: 118 for most drills, 135 for some. 90 for a ball nose; 180 for a flat end mill, which adds nothing. Picking a tool in the Bit Diameter menu on this tab fills it from the tool table.">
                   </div>
                 </div>
                 <p class="qc-mode-hint" id="qc-drl-hint">
@@ -4102,7 +4102,7 @@
         'qc-drl-inset': { min: -200, max: 200, label: 'Inset' },
         'qc-drl-inset-y': { min: -200, max: 200, label: 'Inset Y' },
         'qc-drl-dwell':  { min: 0, max: 10, label: 'Dwell' },
-        'qc-drl-tip-angle': { min: 1, max: 180, label: 'Tip Angle' },
+        'qc-drl-tip-angle': { min: 60, max: 180, label: 'Tip Angle' },
         'qc-drl-pattern-x-dist':  { min: -200, max: 200, label: 'Pattern X Spacing' },
         'qc-drl-pattern-y-dist':  { min: -200, max: 200, label: 'Pattern Y Spacing' },
         'qc-drl-pattern-x-count': { min: 1, max: 200, label: 'X Count', integer: true },
@@ -4268,7 +4268,7 @@
       'qc-drl-inset': { min: -5000, max: 5000, label: 'Inset' },
       'qc-drl-inset-y': { min: -5000, max: 5000, label: 'Inset Y' },
       'qc-drl-dwell':  { min: 0, max: 10, label: 'Dwell' },
-      'qc-drl-tip-angle': { min: 1, max: 180, label: 'Tip Angle' },
+      'qc-drl-tip-angle': { min: 60, max: 180, label: 'Tip Angle' },
       'qc-drl-pattern-x-dist':  { min: -5000, max: 5000, label: 'Pattern X Spacing' },
       'qc-drl-pattern-y-dist':  { min: -5000, max: 5000, label: 'Pattern Y Spacing' },
       'qc-drl-pattern-x-count': { min: 1, max: 200, label: 'X Count', integer: true },
@@ -9174,23 +9174,20 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
   }
   // The Tool card takes a tool from the table: flutes first, so the bit's
   // new feeds use them. Returns the flutes.
-  // A drill's point from the tool table: its taper angle (a half angle,
-  // as for a V-bit), else the usual 118°. A V-bit's own angle; 180° for a
-  // flat bit. Anything else (a ball nose) leaves Tip Angle alone.
+  // A drill's point from the tool table: its taper angle (a half angle, as
+  // for a V-bit) or an angle in its name, else the usual 118°. A ball nose
+  // is full width half its diameter up, as a 90° point; a flat bit 180°.
   function drillTipAngle(t) {
     if (t.type === 'drill' || (!t.type && /\bdrill\b/i.test(t.name))) {
-      var half = t.dimensions && t.dimensions.taper_angle;
-      return half > 0 && half < 90 ? Math.round(half * 200) / 100 : 118;
+      var a = vBitAngle(t);
+      return a >= 60 && a <= 180 ? a : 118;
     }
-    var v = vBitOf(t);
-    if (v) return v;
+    if (t.type === 'ball') return 90;
     return t.type === 'flat' || t.type === 'surfacing' ? 180 : null;
   }
   function applyBitTool(t) {
     var bit = $('qc-bit');
     var fl = flutesFromTool(t);
-    var tip = drillTipAngle(t);
-    if (tip) $('qc-drl-tip-angle').value = String(tip);
     bit.value = roundDisplay(mmToDisplay(t.mm));
     setBitTool(t.n, t.mm);
     bit.dispatchEvent(new Event('input', { bubbles: true }));
@@ -9210,6 +9207,14 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
         chamferForPickedTool(t);
         var now = $('qc-chamfer-enable').checked;
         if (now !== was) chamferMsg = now ? ' A V-bit: Chamfer on.' : ' Not a V-bit: Chamfer off.';
+      }
+      // Tip Angle follows a bit picked for drilling, not one picked on another
+      // tab (a V-bit for a chamfer) that a typed diameter would then keep.
+      var tip = state.currentTab === 'drill' && !$('qc-chamfer-enable').checked ? drillTipAngle(t) : null;
+      if (tip) {
+        $('qc-drl-tip-angle').value = String(tip);
+        updateDrillPreview();
+        if ($('qc-drl-depth-mode').value === 'full') chamferMsg += ' Tip Angle ' + tip + '\u00b0.';
       }
     }
     else setBitTool(0, 0);
@@ -12176,7 +12181,8 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       'X0 Y0 starts at the <strong>plunge hole</strong>; tap it on the preview to go back to it. The Origin picker&rsquo;s dots are the box around the whole cut, which you can also tap on the preview: a corner, edge midpoint or its center.' ] },
     drill: { name: 'Drill', notes: [
       'Holes the size of the <strong>Bit Diameter</strong>. Every Z move is at the <strong>Plunge Rate</strong>, so Feed Rate is greyed out.',
-      'The <strong>Total Depth</strong> label is a menu. <strong>Total Depth</strong> is how deep the bit&rsquo;s point goes. <strong>Drill Tip Through</strong>, as Fusion 360&rsquo;s <em>Drill tip through bottom</em>, keeps the hole its full diameter all the way to that depth, so a drill&rsquo;s point goes deeper by the length of its tip, e.g. for a hole right through the stock at full size. Its <strong>Tip Angle</strong> is filled in when you pick a tool in the Bit Diameter menu: a drill&rsquo;s angle from the tool table, else 118&deg;; a V-bit&rsquo;s own angle; 180&deg; for a flat end mill, which adds nothing. The program&rsquo;s first lines give the depth the point reaches.',
+      'The <strong>Total Depth</strong> label is a menu. <strong>Total Depth</strong> is how deep the bit&rsquo;s point goes. <strong>Drill Tip Through</strong> is for a hole right through at full size: the hole is its full diameter all the way down, and the point goes deeper by the length of its tip. Fusion 360 calls it <em>Drill tip through bottom</em>. For a clean exit, make the depth the stock&rsquo;s thickness plus about 0.5&nbsp;mm (0.02&nbsp;in); the tip is added to that.',
+      '<strong>Tip Angle</strong> shows with Drill Tip Through. Picking a tool in the Bit Diameter menu on this tab fills it in: a drill&rsquo;s angle from the tool table or its name, else 118&deg;; 90&deg; for a ball nose; 180&deg; for a flat end mill, which adds nothing. The program&rsquo;s first lines give the Z the point reaches.',
       '<strong>Peck Depth</strong> 0 drills in one plunge. Otherwise each peck goes that much deeper, then <strong>Full</strong> lifts above the surface to clear chips, or <strong>Short</strong> backs off 0.5 mm (0.02") to break the chip. <strong>Dwell at Bottom</strong> pauses at full depth.',
       'With a pattern, the Origin is a point of the <strong>box around the holes</strong>, OR tap a hole in the preview to make that hole X0 Y0.',
       HELP_CHAMFER + ' On Drill, the card asks for the <strong>Hole Diameter</strong> (the drill&rsquo;s size, as the Tool card holds the V-bit), and the Feed Rate comes back on for the chamfer&rsquo;s laps; keep the Origin and pattern the drill program used, so each chamfer lands on its hole.' ] },
@@ -16560,7 +16566,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       var origin = resolveDrillOrigin(params.origin, params.pattern, positions, params.bitDiameter, params.inset);
 
       var extras = [
-        'Depth: ' + params.depth + unitsLabel + (tip ? ', drill tip through, the tip to ' + fixed(depth, 3) + unitsLabel + ' for a ' + params.tipAngle + '° point' : ''),
+        'Depth: ' + params.depth + unitsLabel + (tip ? ', drill tip through: the point to Z-' + fixed(depth, 3) + ', ' + fixed(tip, 3) + unitsLabel + ' deeper for a ' + params.tipAngle + '° tip' : ''),
         'Peck: ' + (peck ? peck + unitsLabel + ', ' + (mode === 'break' ? 'short retract' : 'full retract') : 'none'),
         'Origin: ' + origin.label
       ];

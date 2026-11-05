@@ -1744,7 +1744,7 @@ test('Drill Tip Through: the point goes deeper by the tip, pecks counted to it',
   const gcode = g.generateDrillProgram(drillBase({ depthMode: 'full', tipAngle: 118, peckDepth: 10 }));
   const z = keyholeMoves(gcode).filter(m => m.z != null).map(m => m.cmd + m.z);
   assert.deepEqual(z, ['G05', 'G02', 'G1-10', 'G02', 'G0-9.5', 'G1-11.502', 'G05']);
-  assert.match(gcode, /\(Depth: 10mm, drill tip through, the tip to 11\.502mm for a 118° point\)/);
+  assert.match(gcode, /\(Depth: 10mm, drill tip through: the point to Z-11\.502, 1\.502mm deeper for a 118° tip\)/);
 });
 
 test('Drill Tip Through adds nothing for a flat bit, and Total Depth is to the point', () => {
