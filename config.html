@@ -9202,12 +9202,13 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       name.title = none ? 'No tool change: the program cuts with the bit in the spindle. Click to pick a tool from the tool table.'
         : t ? 'T' + n + (t.name ? ': ' + t.name : '') + (link ? '. Click to pick another tool.' : '') : '';
     }
-    // A tool from the table brings its flutes (the table's, else its name's).
-    var flutes = $('qc-flutes');
+    // A tool whose tool table entry gives its flutes fixes them; guessed from
+    // its name (or 2 when nothing says), they stay yours to change.
+    var flutes = $('qc-flutes'), fixed = !!(t && t.flutes > 0);
     if (flutes) {
       if (flutes.dataset.tip == null) flutes.dataset.tip = flutes.title;
-      flutes.disabled = !!n;
-      flutes.title = n ? 'From T' + n + ': its flutes in the tool table, else its name (2 when neither says). Pick No tool change, or type a diameter, to set them yourself.' : flutes.dataset.tip;
+      flutes.disabled = fixed;
+      flutes.title = fixed ? 'From T' + n + '\u2019s flutes in the tool table. Pick No tool change, or type a diameter, to set them yourself.' : flutes.dataset.tip;
     }
     if (toolPop.open) renderToolList();
   }
