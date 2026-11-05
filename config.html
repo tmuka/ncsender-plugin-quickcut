@@ -3732,13 +3732,9 @@
     if (!noCommon) header.appendChild(toolSummaryButton());
     cards.style.display = noCommon ? 'none' : '';
     if (saveToggle) saveToggle.style.display = noCommon ? 'none' : '';
-    // Drilling only moves in Z, at the Plunge Rate.
+    // Drilling only moves in Z, at the Plunge Rate, so Feed Rate is hidden.
     var feed = $('qc-feed');
-    if (feed) {
-      if (feed.dataset.tip == null) feed.dataset.tip = feed.title;
-      feed.disabled = view === 'drill';
-      feed.title = view === 'drill' ? 'Not used for drilling: every move is at the Plunge Rate.' : feed.dataset.tip;
-    }
+    if (feed) feed.closest('.qc-field').style.display = view === 'drill' && !$('qc-chamfer-enable').checked ? 'none' : '';
   }
 
   // The one-line summary of the Tool and Spindle cards, shown over the top
@@ -3772,7 +3768,7 @@
     var esc = function(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
     var u = state.unitLabel, t = bitTool(), mat = $('qc-material');
     var parts = [(t.n ? '<b>T' + t.n + '</b> ' : '') + 'Bit <b>' + esc($('qc-bit').value) + ' ' + u + '</b>'];
-    if (!$('qc-feed').disabled) parts.push('Feed <b>' + esc($('qc-feed').value) + '</b> ' + u + '/min');
+    if ($('qc-feed').offsetParent) parts.push('Feed <b>' + esc($('qc-feed').value) + '</b> ' + u + '/min');
     parts.push('Plunge <b>' + esc($('qc-plunge').value) + '</b> ' + u + '/min');
     parts.push('<b>' + esc($('qc-rpm').value) + '</b> RPM');
     if (mat.value) parts.push(esc(mat.options[mat.selectedIndex].textContent));
@@ -8518,11 +8514,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       'Keep the Origin and pattern the drill program used, so each chamfer lands on its hole.' : hint.dataset.cut;
     if (state.currentTab === 'drill') updateDrillPreview();
     // Drilling only plunges, at the Plunge Rate; a chamfer's laps use the Feed Rate.
-    if (state.currentTab === 'drill') {
-      var feed = $('qc-feed');
-      feed.disabled = !on;
-      feed.title = on ? feed.dataset.tip : 'Not used for drilling: every move is at the Plunge Rate.';
-    }
+    if (state.currentTab === 'drill') $('qc-feed').closest('.qc-field').style.display = on ? '' : 'none';
   }
   function updateChamferVisibility() {
     showChamferFields();
@@ -8980,9 +8972,12 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     setFeedsAuto(true);
     var u = state.unitLabel, chip = roundDisplay(mmToDisplay(f.chipMm)), sel = $('qc-material');
     var styleSel = $('qc-feeds-style'), styleName = state.feedsStyle && state.feedsStyle !== 'average' ? ' \u00b7 ' + styleSel.options[styleSel.selectedIndex].textContent.replace(/^Material \u00b7 /, '') : '';
+    if (!feed.offsetParent) feed = $('qc-plunge');
     setTimeout(function() { showTooltip(feed, sel.options[sel.selectedIndex].textContent + styleName + ', a ' + state.flutes + '-flute ' +
       roundDisplay(mmToDisplay(bit)) + ' ' + u + ' bit: ' + f.rpm + ' RPM, ' + chip + ' ' + u + ' a tooth' +
-      (f.capped ? ', feed held to the machine\u2019s max' : '') + '. Depth of Cut ' + roundDisplay(mmToDisplay(f.stepMm)) + ' ' + u +
+      (f.capped ? (state.maxFeedMm && state.maxFeedMm < 4000 ? ', feed held to the machine\u2019s max' :
+        ', feed held to QuickCut\u2019s starting limit of ' + (state.isImperial ? '157 in/min' : '4000 mm/min') +
+        (state.feedsStyle === 'aggressive' ? ' (Aggressive still deepens the passes)' : '')) : '') + '. Depth of Cut ' + roundDisplay(mmToDisplay(f.stepMm)) + ' ' + u +
       ($('qc-' + pre + '-stepover') && pre !== 'plan' ? ', Stepover ' + f.stepoverPct + '%' : '') + '.' +
       (v === 'aluminum' ? ' Aluminum: a 1-flute bit, and air or mist.' : '') +
       ' A start: listen, look at the chips, and adjust.', TOOLTIP_OK, true); }, 0);
@@ -12180,7 +12175,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       'There&rsquo;s no Depth of Cut: a shallower pass would cut the narrow neck out to the full head width.',
       'X0 Y0 starts at the <strong>plunge hole</strong>; tap it on the preview to go back to it. The Origin picker&rsquo;s dots are the box around the whole cut, which you can also tap on the preview: a corner, edge midpoint or its center.' ] },
     drill: { name: 'Drill', notes: [
-      'Holes the size of the <strong>Bit Diameter</strong>. Every Z move is at the <strong>Plunge Rate</strong>, so Feed Rate is greyed out.',
+      'Holes the size of the <strong>Bit Diameter</strong>. Every Z move is at the <strong>Plunge Rate</strong>, so Feed Rate is hidden.',
       'The <strong>Total Depth</strong> label is a menu. <strong>Total Depth</strong> is how deep the bit&rsquo;s point goes. <strong>Drill Tip Through</strong> is for a hole right through at full size: the hole is its full diameter all the way down, and the point goes deeper by the length of its tip. Fusion 360 calls it <em>Drill tip through bottom</em>. For a clean exit, make the depth the stock&rsquo;s thickness plus about 0.5&nbsp;mm (0.02&nbsp;in); the tip is added to that.',
       '<strong>Tip Angle</strong> shows with Drill Tip Through. Picking a tool in the Bit Diameter menu on this tab fills it in: a drill&rsquo;s angle from the tool table or its name, else 118&deg;; 90&deg; for a ball nose; 180&deg; for a flat end mill, which adds nothing. The program&rsquo;s first lines give the Z the point reaches.',
       '<strong>Peck Depth</strong> 0 drills in one plunge. Otherwise each peck goes that much deeper, then <strong>Full</strong> lifts above the surface to clear chips, or <strong>Short</strong> backs off 0.5 mm (0.02") to break the chip. <strong>Dwell at Bottom</strong> pauses at full depth.',
