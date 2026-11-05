@@ -3746,3 +3746,11 @@ test('planer wasteboard: zero is always the travel front-left corner, zones foll
   assert.match(fl, /Surfacing 2 areas around the keepout/);
   assert.ok(!/^G1 X7[5-9]\d\.\d+ Y5\d\d\./m.test(fl), 'never cuts inside the zone');
 });
+
+test('a controller spindle delay ($394) replaces the G4 wait', () => {
+  const gen = makeQuickCutGenerator(false).generateRectangleProgram;
+  assert.match(gen(baseParams()), /^G4 P1 ; Wait 1 seconds$/m);
+  const gcode = gen(baseParams({ firmwareSpindleDelay: 3 }));
+  assert.doesNotMatch(gcode, /^G4 /m);
+  assert.match(gcode, /^M3 S15000 ; Start spindle\n; The controller waits 3 seconds \(\$394\)$/m);
+});
