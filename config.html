@@ -1788,7 +1788,7 @@
                 <label for="qc-rpm">Spindle RPM</label>
                 <input class="qc-input" type="number" id="qc-rpm" min="0" max="24000" step="100" value="15000" title="Spindle speed. The spindle starts before the cut and stops at the end.">
               </div>
-              <div class="qc-field">
+              <div class="qc-field" id="qc-delay-field">
                 <label for="qc-delay">Delay (s)</label>
                 <input class="qc-input" type="number" id="qc-delay" min="0" max="30" step="1" value="1" title="Seconds to wait after starting the spindle, so it reaches speed before cutting.">
               </div>
@@ -3424,6 +3424,8 @@
     maxPlungeMm: null,
     spindleMax: null,
     spindleMin: null,
+    // grblHAL $394: seconds the firmware itself waits after M3, which hides Delay.
+    spindleOnDelayS: 0,
     // Flutes on the bit, for the starting feeds.
     flutes: 2,
     // RPM|Feed|Plunge as last filled in from the Material, so a new bit
@@ -3489,11 +3491,13 @@
       // grblHAL's default $30 is 1000: not a router's real top speed.
       if (fwNum('30') >= 5000) state.spindleMax = fwNum('30');
       if (fwNum('31') > 0) state.spindleMin = fwNum('31');
+      if (fwNum('394') > 0) state.spindleOnDelayS = fwNum('394');
       var atci = atciKeepout(fwSettings);
       if (atci) state.keepoutZonesMm.push(atci);
     } catch (err) {
       console.warn('[QuickCut] firmware fetch failed, wasteboard limits unknown:', err);
     }
+    if (state.spindleOnDelayS > 0) $('qc-delay-field').style.display = 'none';
     renderOriginPickers();
     if (state.isImperial) convertDefaultsToInches();
     // The pattern menus exist before saved settings set them.
@@ -5005,6 +5009,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       plungeFeedRate: num('qc-plunge', 0),
       spindleRpm:     num('qc-rpm', 0),
       spindleDelay:   num('qc-delay', 0),
+      firmwareSpindleDelay: state.spindleOnDelayS,
       mistM7:         $('qc-mist').checked,
       floodM8:        $('qc-flood').checked,
       toolNumber:     bitToolNumber()
@@ -12169,7 +12174,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       'Circular: <strong>Total Angle</strong> 360 spaces the copies all the way round; less puts the first and last copy at the ends of the arc; negative runs clockwise. The <strong>Radius</strong> label is a menu: <strong>Center Radius</strong> is to each copy&rsquo;s center; <strong>Inside Radius</strong> is to the nearest edge of any copy, the clear circle left in the middle (e.g. around a center hole); <strong>Outside Radius</strong> is to the farthest edge, so the pattern fits in a circle that size. Edges are the solid lines on the preview: on an Outer cut the part&rsquo;s own edge, otherwise the edge of the cut. Changing it converts the number so the copies stay put.',
       'The pattern preview shows every copy as you type, and measures what the X and Y menus set (Spacing, Extent, Overall or Gap) and a Circular pattern&rsquo;s Radius in green. Click a blank spot on any preview, this one or a shape&rsquo;s, to enlarge it; click a blank spot again or press Esc to go back. Clicks on corners, ends, holes and sides still pick them, there or enlarged; dragging an enlarged preview shows the angle as it changes. Drag it to turn the <strong>Angle</strong> (Circular: <strong>Start Angle</strong>) in half degrees; it snaps square within 5&deg; and sticks at miter angles such as 15, 18, 22.5, 30, 36 and 45&deg;.' ] },
     tool: { title: 'Tool, spindle, and saving', notes: [
-      '<strong>Feed Rate</strong> is for moves in X and Y; <strong>Plunge Rate</strong> for moves down in Z. Pick the <strong>Material</strong> for starting feeds (Spindle RPM, Feed Rate and Plunge Rate) for the Bit Diameter and the bit&rsquo;s <strong>Flutes</strong>. It also fills in Depth of Cut and, for shapes that clear pockets, Stepover, and fills them in again for a new Bit Diameter until you change them yourself. A new install starts with MDF / Plywood&rsquo;s. They stay within the machine&rsquo;s max feed and spindle range. The <strong>Material</strong> label is a menu of how hard they push: <strong>Average</strong>; <strong>Conservative</strong> for a light machine, a long bit or a first try (Feed Rate and Plunge Rate &times;0.75, even when the machine&rsquo;s max holds them, and Depth of Cut and Stepover &times;0.75; on plastics and aluminum the feed stays, since a thinner chip melts or rubs); <strong>Aggressive</strong> for a rigid one (Feed Rate and Plunge Rate &times;1.25, up to the material&rsquo;s chip limit and the machine&rsquo;s max, and Depth of Cut and Stepover &times;1.2: about 1.5 to 1.8 times the load). RPM stays, Plunge Rate stays within the Z axis&rsquo;s max rate, and the style is kept for every tab. A start: listen, look at the chips, and adjust. <strong>Delay</strong> waits after starting the spindle so it reaches speed. <strong>Mist</strong> and <strong>Flood</strong> turn on coolant (M7 / M8).',
+      '<strong>Feed Rate</strong> is for moves in X and Y; <strong>Plunge Rate</strong> for moves down in Z. Pick the <strong>Material</strong> for starting feeds (Spindle RPM, Feed Rate and Plunge Rate) for the Bit Diameter and the bit&rsquo;s <strong>Flutes</strong>. It also fills in Depth of Cut and, for shapes that clear pockets, Stepover, and fills them in again for a new Bit Diameter until you change them yourself. A new install starts with MDF / Plywood&rsquo;s. They stay within the machine&rsquo;s max feed and spindle range. The <strong>Material</strong> label is a menu of how hard they push: <strong>Average</strong>; <strong>Conservative</strong> for a light machine, a long bit or a first try (Feed Rate and Plunge Rate &times;0.75, even when the machine&rsquo;s max holds them, and Depth of Cut and Stepover &times;0.75; on plastics and aluminum the feed stays, since a thinner chip melts or rubs); <strong>Aggressive</strong> for a rigid one (Feed Rate and Plunge Rate &times;1.25, up to the material&rsquo;s chip limit and the machine&rsquo;s max, and Depth of Cut and Stepover &times;1.2: about 1.5 to 1.8 times the load). RPM stays, Plunge Rate stays within the Z axis&rsquo;s max rate, and the style is kept for every tab. A start: listen, look at the chips, and adjust. <strong>Delay</strong> waits after starting the spindle so it reaches speed; it&rsquo;s hidden when the controller&rsquo;s own spindle delay ($394) is set, since that wait comes first. <strong>Mist</strong> and <strong>Flood</strong> turn on coolant (M7 / M8).',
       'Each tab remembers its own tool settings, and the values you last generated with. Scrolled down, one line at the top sums them up; tap it to go back up to them.',
       'A field that can&rsquo;t be used gets a red border, and a red bubble over the field you&rsquo;re in (or just left) says why. The note beside <strong>Generate</strong> shows the first problem, with &ldquo;(+N more)&rdquo; when there are others; tap it to go to that field.',
       'Click the <strong>Bit Diameter</strong> label to fill in the loaded tool&rsquo;s diameter from ncSender&rsquo;s tool table (the tool your Tool Numbering setting names, by slot or Tool ID). With a tool changer, the label is a menu of the tool table instead: pick the tool to cut with, and the program starts with a tool change to it (<kbd>M6 T</kbd>). Typing another diameter, or <strong>No tool change</strong>, leaves it out.',
@@ -12669,7 +12674,9 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       if (params.floodM8) lines.push('M8 ; Flood coolant on');
       if (params.spindleRpm > 0) {
         lines.push('M3 S' + params.spindleRpm + ' ; Start spindle');
-        if (params.spindleDelay > 0) {
+        if (params.firmwareSpindleDelay > 0) {
+          lines.push('; The controller waits ' + params.firmwareSpindleDelay + ' seconds ($394)');
+        } else if (params.spindleDelay > 0) {
           lines.push('G4 P' + params.spindleDelay + ' ; Wait ' + params.spindleDelay + ' seconds');
         }
       }
