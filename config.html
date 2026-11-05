@@ -629,6 +629,7 @@
   .qc-tool-name:not(:empty)::before { content: '\00b7'; padding: 0 0.45em; color: var(--color-text-secondary); }
   /* With the tool menu, the name opens it. */
   .qc-tool-name-link { cursor: pointer; border-radius: 4px; outline: none; }
+  .qc-tool-name.qc-tool-none { color: var(--color-text-secondary); font-weight: 500; }
   .qc-tool-name-link:hover, .qc-tool-name-link:focus-visible { color: color-mix(in srgb, var(--color-accent) 55%, var(--color-text-primary)); }
 
   /* A slim scrollbar like ncSender's own, instead of the system's (a wide
@@ -9085,6 +9086,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       nameEl.addEventListener('click', function() { if (toolPop.open) closeToolPop(); else openToolPop(); });
       nameEl.addEventListener('keydown', function(e) { if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') { e.preventDefault(); openToolPop(); } });
     }
+    showBitTool();
     var filter = $('qc-tool-filter');
     filter.addEventListener('input', function() { toolPop.active = firstToolActive(); renderToolList(); if (toolPop.active >= toolPop.items.length) { toolPop.active = 0; renderToolList(); } });
     filter.addEventListener('keydown', function(e) {
@@ -9182,7 +9184,15 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     btn.textContent = n ? 'Bit · T' + n : 'Bit Diameter';
     // The tool's name after the card's title, while one from the table is picked.
     var t = n ? (state.tools || []).filter(function(x) { return x.n === n; })[0] : null, name = $('qc-tool-name');
-    if (name) { name.textContent = t && t.name ? t.name : ''; name.title = t && t.name ? 'T' + n + ': ' + t.name + (name.classList.contains('qc-tool-name-link') ? '. Click to pick another tool.' : '') : ''; }
+    if (name) {
+      var link = name.classList.contains('qc-tool-name-link');
+      // With the tool menu and no tool picked: "No tool change", to click.
+      var none = !n && link;
+      name.classList.toggle('qc-tool-none', none);
+      name.textContent = none ? 'No tool change' : t ? (t.name || 'T' + n) : '';
+      name.title = none ? 'No tool change: the program cuts with the bit in the spindle. Click to pick a tool from the tool table.'
+        : t ? 'T' + n + (t.name ? ': ' + t.name : '') + (link ? '. Click to pick another tool.' : '') : '';
+    }
     // A tool from the table brings its flutes (the table's, else its name's).
     var flutes = $('qc-flutes');
     if (flutes) {
