@@ -4474,6 +4474,8 @@
   // fields show only their red border, so bubbles never pile up. On the
   // host page's body, as showTooltip's, since the dialog may be transformed.
   var _errBubble = null, _errLeft = null, _errWatch = null;
+  // How long a pause in typing counts as done, for an error typing more can't fix.
+  var TYPING_PAUSE_MS = 1000;
   function errorBubbleTarget() {
     var ok = function(el) {
       return el && ROOT.contains(el) && el.classList.contains('qc-input-error') && el.offsetParent !== null;
@@ -4587,9 +4589,16 @@
         var el = document.getElementById(fieldId);
         if (!el) return;
         // While typing, a flagged field clears the moment it's valid (or
-        // updates its message); a new problem waits until the field is left.
+        // updates its message); a new problem waits until the field is left,
+        // except one more typing can't fix (a refused 1,000), shown after a
+        // second's pause.
+        var pause = null;
         el.addEventListener('input', function() {
           if (this.classList.contains('qc-input-error')) recheckField(fieldId);
+          clearTimeout(pause);
+          if (el.hasAttribute('data-unit') && NcUnitInput.unitValueProblem(el.value)) {
+            pause = setTimeout(function() { if (document.activeElement === el) recheckField(fieldId); }, TYPING_PAUSE_MS);
+          }
         });
         el.addEventListener('blur', function() { recheckField(fieldId); });
       })(id);
