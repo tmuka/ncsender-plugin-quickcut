@@ -627,6 +627,9 @@
   .qc-tool-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     text-transform: none; letter-spacing: 0.01em; font-weight: 600; color: var(--color-text-primary); }
   .qc-tool-name:not(:empty)::before { content: '\00b7'; padding: 0 0.45em; color: var(--color-text-secondary); }
+  /* With the tool menu, the name opens it. */
+  .qc-tool-name-link { cursor: pointer; border-radius: 4px; outline: none; }
+  .qc-tool-name-link:hover, .qc-tool-name-link:focus-visible { color: color-mix(in srgb, var(--color-accent) 55%, var(--color-text-primary)); }
 
   /* A slim scrollbar like ncSender's own, instead of the system's (a wide
      grey one with arrows on the Pi, none at all on a Mac). */
@@ -9073,6 +9076,15 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     ROOT.appendChild(pop);
     btn.addEventListener('keydown', function(e) { if (e.key === 'ArrowDown') { e.preventDefault(); openToolPop(); } });
     btn.addEventListener('click', function() { if (toolPop.open) closeToolPop(); else openToolPop(); });
+    // The tool's name after the card's title opens the same menu.
+    var nameEl = $('qc-tool-name');
+    if (nameEl) {
+      nameEl.classList.add('qc-tool-name-link');
+      nameEl.setAttribute('role', 'button');
+      nameEl.tabIndex = 0;
+      nameEl.addEventListener('click', function() { if (toolPop.open) closeToolPop(); else openToolPop(); });
+      nameEl.addEventListener('keydown', function(e) { if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') { e.preventDefault(); openToolPop(); } });
+    }
     var filter = $('qc-tool-filter');
     filter.addEventListener('input', function() { toolPop.active = 0; renderToolList(); });
     filter.addEventListener('keydown', function(e) {
@@ -9083,7 +9095,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     // A tap or click anywhere else closes it.
     document.addEventListener('pointerdown', function onDown(e) {
       if (!document.body.contains(ROOT)) { document.removeEventListener('pointerdown', onDown, true); return; }
-      if (toolPop.open && !pop.contains(e.target) && e.target !== btn) closeToolPop();
+      if (toolPop.open && !pop.contains(e.target) && e.target !== btn && !(nameEl && nameEl.contains(e.target))) closeToolPop();
     }, true);
     $('qc-bit').addEventListener('input', function() {
       var t = bitTool();
@@ -9167,7 +9179,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     btn.textContent = n ? 'Bit · T' + n : 'Bit Diameter';
     // The tool's name after the card's title, while one from the table is picked.
     var t = n ? (state.tools || []).filter(function(x) { return x.n === n; })[0] : null, name = $('qc-tool-name');
-    if (name) { name.textContent = t && t.name ? t.name : ''; name.title = t && t.name ? 'T' + n + ': ' + t.name : ''; }
+    if (name) { name.textContent = t && t.name ? t.name : ''; name.title = t && t.name ? 'T' + n + ': ' + t.name + (name.classList.contains('qc-tool-name-link') ? '. Click to pick another tool.' : '') : ''; }
     if (toolPop.open) renderToolList();
   }
   // The Tool card takes a tool from the table: flutes first, so the bit's
