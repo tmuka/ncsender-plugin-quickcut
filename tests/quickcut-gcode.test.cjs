@@ -3754,3 +3754,30 @@ test('a controller spindle delay ($394) replaces the G4 wait', () => {
   assert.doesNotMatch(gcode, /^G4 /m);
   assert.match(gcode, /^M3 S15000 ; Start spindle\n; The controller waits 3 seconds \(\$394\)$/m);
 });
+
+test('Drill Tip Through: the point goes deeper by the tip, pecks counted to it', () => {
+  const g = makeQuickCutGenerator(false);
+  // 5 mm, 118°: 2.5 / tan(59°) = 1.502 mm of tip.
+  assert.ok(Math.abs(g.drillTipLength({ depthMode: 'full', tipAngle: 118, bitDiameter: 5 }) - 1.5022) < 1e-4);
+  const gcode = g.generateDrillProgram(drillBase({ depthMode: 'full', tipAngle: 118, peckDepth: 10 }));
+  const z = keyholeMoves(gcode).filter(m => m.z != null).map(m => m.cmd + m.z);
+  assert.deepEqual(z, ['G05', 'G02', 'G1-10', 'G02', 'G0-9.5', 'G1-11.502', 'G05']);
+  assert.match(gcode, /\(Depth: 10mm, drill tip through: the point to Z-11\.502, 1\.502mm deeper for a 118° tip\)/);
+});
+
+test('Drill Tip Through adds nothing for a flat bit, and Total Depth is to the point', () => {
+  const g = makeQuickCutGenerator(false);
+  for (const p of [{ depthMode: 'full', tipAngle: 180 }, { depthMode: 'tip', tipAngle: 118 }, {}]) {
+    const gcode = g.generateDrillProgram(drillBase(p));
+    assert.match(gcode, /^G1 Z-10\.000 F150$/m);
+    assert.match(gcode, /\(Depth: 10mm\)/);
+  }
+});
+
+test('Drill Tip Through in inches', () => {
+  const g = makeQuickCutGenerator(true);
+  const gcode = g.generateDrillProgram(drillBase({ bitDiameter: 0.25, depth: 0.75, plungeFeedRate: 20, depthMode: 'full', tipAngle: 135 }));
+  // 0.125 / tan(67.5°) = 0.0518
+  assert.match(gcode, /^G1 Z-0\.802 F20$/m);
+});
+

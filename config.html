@@ -3315,12 +3315,21 @@
                 <h3 class="qc-card-title">Hole</h3>
                 <div class="qc-row-2">
                   <div class="qc-field">
-                    <label for="qc-drl-depth">Total Depth</label>
-                    <input class="qc-input" type="text" autocomplete="off" spellcheck="false" data-unit="length" id="qc-drl-depth" min="0.001" step="0.01" value="10" required title="How deep the hole goes below Z0, the top of the stock.">
+                    <select class="qc-label-select" id="qc-drl-depth-mode" aria-label="Depth measured to" title="Total Depth: how deep the bit's point goes. Drill Tip Through: for a hole right through at full size. The hole is its full diameter all the way down, and the point goes deeper by the length of its tip. Fusion 360 calls it Drill tip through bottom.">
+                      <option value="tip" selected>Total Depth</option>
+                      <option value="full">Drill Tip Through</option>
+                    </select>
+                    <input class="qc-input" type="text" autocomplete="off" spellcheck="false" data-unit="length" id="qc-drl-depth" min="0.001" step="0.01" value="10" required aria-labelledby="qc-drl-depth-mode" title="How deep the hole goes below Z0, the top of the stock: to the bit's point, or with Drill Tip Through, to where the hole is still its full diameter.">
                   </div>
                   <div class="qc-field">
                     <label for="qc-drl-peck">Peck Depth</label>
                     <input class="qc-input" type="text" autocomplete="off" spellcheck="false" data-unit="length" id="qc-drl-peck" min="0" step="0.01" value="3" title="Depth of each peck: the bit comes up between pecks to clear the chips, which an end mill can't do on its own. 0, or the hole's depth or more: one plunge to full depth.">
+                  </div>
+                </div>
+                <div class="qc-row-2" id="qc-drl-tip-row" style="display: none;">
+                  <div class="qc-field">
+                    <label for="qc-drl-tip-angle">Tip Angle (°)</label>
+                    <input class="qc-input" type="number" id="qc-drl-tip-angle" min="60" max="180" step="1" value="118" title="The angle of the bit's point: 118 for most drills, 135 for some. 90 for a ball nose; 180 for a flat end mill, which adds nothing. Picking a tool in the Bit Diameter menu on this tab fills it from the tool table.">
                   </div>
                 </div>
                 <div class="qc-field">
@@ -4246,12 +4255,10 @@
     cards.style.display = noCommon ? 'none' : '';
     if (saveToggle) saveToggle.style.display = noCommon ? 'none' : '';
     // Drilling only moves in Z, at the Plunge Rate.
+    // Drilling only moves in Z, at the Plunge Rate, so Feed Rate is hidden
+    // (a chamfer's laps use it).
     var feed = $('qc-feed');
-    if (feed) {
-      if (feed.dataset.tip == null) feed.dataset.tip = feed.title;
-      feed.disabled = view === 'drill';
-      feed.title = view === 'drill' ? 'Not used for drilling: every move is at the Plunge Rate.' : feed.dataset.tip;
-    }
+    if (feed) feed.closest('.qc-field').style.display = view === 'drill' && !$('qc-chamfer-enable').checked ? 'none' : '';
   }
 
   // The one-line summary of the Tool and Spindle cards, shown over the top
@@ -4285,7 +4292,7 @@
     var esc = function(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;'); };
     var u = state.unitLabel, t = bitTool(), mat = $('qc-material');
     var parts = [(t.n ? '<b>T' + t.n + '</b> ' : '') + 'Bit <b>' + esc($('qc-bit').value) + ' ' + u + '</b>'];
-    if (!$('qc-feed').disabled) parts.push('Feed <b>' + esc($('qc-feed').value) + '</b> ' + u + '/min');
+    if ($('qc-feed').offsetParent) parts.push('Feed <b>' + esc($('qc-feed').value) + '</b> ' + u + '/min');
     parts.push('Plunge <b>' + esc($('qc-plunge').value) + '</b> ' + u + '/min');
     parts.push('<b>' + esc($('qc-rpm').value) + '</b> RPM');
     if (mat.value) parts.push(esc(mat.options[mat.selectedIndex].textContent));
@@ -4615,6 +4622,7 @@
         'qc-drl-inset': { min: -200, max: 200, label: 'Inset' },
         'qc-drl-inset-y': { min: -200, max: 200, label: 'Inset Y' },
         'qc-drl-dwell':  { min: 0, max: 10, label: 'Dwell' },
+        'qc-drl-tip-angle': { min: 60, max: 180, label: 'Tip Angle' },
         'qc-drl-pattern-x-dist':  { min: -200, max: 200, label: 'Pattern X Spacing' },
         'qc-drl-pattern-y-dist':  { min: -200, max: 200, label: 'Pattern Y Spacing' },
         'qc-drl-pattern-x-count': { min: 1, max: 200, label: 'X Count', integer: true },
@@ -4780,6 +4788,7 @@
       'qc-drl-inset': { min: -5000, max: 5000, label: 'Inset' },
       'qc-drl-inset-y': { min: -5000, max: 5000, label: 'Inset Y' },
       'qc-drl-dwell':  { min: 0, max: 10, label: 'Dwell' },
+      'qc-drl-tip-angle': { min: 60, max: 180, label: 'Tip Angle' },
       'qc-drl-pattern-x-dist':  { min: -5000, max: 5000, label: 'Pattern X Spacing' },
       'qc-drl-pattern-y-dist':  { min: -5000, max: 5000, label: 'Pattern Y Spacing' },
       'qc-drl-pattern-x-count': { min: 1, max: 200, label: 'X Count', integer: true },
@@ -8115,6 +8124,8 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     if (drl.depth != null)     $('qc-drl-depth').value     = roundDisplay(mmToDisplay(drl.depth));
     if (drl.peckDepth != null) $('qc-drl-peck').value      = roundDisplay(mmToDisplay(drl.peckDepth));
     if (drl.peckMode)          $('qc-drl-peck-mode').value = drl.peckMode;
+    if (drl.depthMode)         $('qc-drl-depth-mode').value = drl.depthMode;
+    if (drl.tipAngle != null)  $('qc-drl-tip-angle').value = drl.tipAngle;
     if (drl.dwell != null)     $('qc-drl-dwell').value     = drl.dwell;
     if (drl.origin)            setOriginPickerValue('qc-drl-origin', drl.origin);
     // Saved before Center Inset (or before Inset): Edge Inset, as made.
@@ -8366,6 +8377,8 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
         depth:         displayToMm(params.depth),
         peckDepth:     displayToMm(params.peckDepth),
         peckMode:      params.peckMode,
+        depthMode:     params.depthMode,
+        tipAngle:      params.tipAngle,
         dwell:         params.dwell,
         origin:        params.origin,
         inset:       insetToMm(params.inset),
@@ -9105,7 +9118,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
   // What only the shape's own cut uses, hidden while chamfering: the Depth
   // card, or on Drill (no Depth card) its depth, peck and dwell.
   function chamferHides(prefix) {
-    if (prefix === 'drl') return ['qc-drl-depth', 'qc-drl-peck', 'qc-drl-peck-mode', 'qc-drl-dwell'].map(function(id) { return $(id).closest('.qc-field'); });
+    if (prefix === 'drl') return ['qc-drl-depth', 'qc-drl-peck', 'qc-drl-peck-mode', 'qc-drl-dwell', 'qc-drl-tip-angle'].map(function(id) { return $(id).closest('.qc-field'); });
     return [$('qc-' + prefix + '-depth').closest('.qc-card')];
   }
   function placeChamferCard(view) {
@@ -9149,11 +9162,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       'Keep the Origin and pattern the drill program used, so each chamfer lands on its hole.' : hint.dataset.cut;
     if (state.currentTab === 'drill') updateDrillPreview();
     // Drilling only plunges, at the Plunge Rate; a chamfer's laps use the Feed Rate.
-    if (state.currentTab === 'drill') {
-      var feed = $('qc-feed');
-      feed.disabled = !on;
-      feed.title = on ? feed.dataset.tip : 'Not used for drilling: every move is at the Plunge Rate.';
-    }
+    if (state.currentTab === 'drill') $('qc-feed').closest('.qc-field').style.display = on ? '' : 'none';
   }
   function updateChamferVisibility() {
     showChamferFields();
@@ -9878,11 +9887,15 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     filled.forEach(function(id) { $(id).dispatchEvent(new Event('input', { bubbles: true })); });
     if (quiet) return;
     setFeedsAuto(true);
+    // On Drill, Feed Rate is hidden: the note goes by Plunge Rate.
+    if (!feed.offsetParent) feed = $('qc-plunge');
     var u = state.unitLabel, chip = roundDisplay(mmToDisplay(f.chipMm)), sel = $('qc-material');
     var styleSel = $('qc-feeds-style'), styleName = state.feedsStyle && state.feedsStyle !== 'average' ? ' \u00b7 ' + styleSel.options[styleSel.selectedIndex].textContent.replace(/^Material \u00b7 /, '') : '';
     setTimeout(function() { showTooltip(feed, sel.options[sel.selectedIndex].textContent + styleName + ', a ' + state.flutes + '-flute ' +
       roundDisplay(mmToDisplay(bit)) + ' ' + u + ' bit: ' + f.rpm + ' RPM, ' + chip + ' ' + u + ' a tooth' +
-      (f.capped ? ', feed held to the machine\u2019s max' : '') + '. Depth of Cut ' + roundDisplay(mmToDisplay(f.stepMm)) + ' ' + u +
+      (f.capped ? (state.maxFeedMm && state.maxFeedMm < 4000 ? ', feed held to the machine\u2019s max' :
+        ', feed held to QuickCut\u2019s starting limit of ' + (state.isImperial ? '157 in/min' : '4000 mm/min') +
+        (state.feedsStyle === 'aggressive' ? ' (Aggressive still deepens the passes)' : '')) : '') + '. Depth of Cut ' + roundDisplay(mmToDisplay(f.stepMm)) + ' ' + u +
       ($('qc-' + pre + '-stepover') && pre !== 'plan' ? ', Stepover ' + f.stepoverPct + '%' : '') + '.' +
       (v === 'aluminum' ? ' Aluminum: a 1-flute bit, and air or mist.' : '') +
       ' A start: listen, look at the chips, and adjust.', TOOLTIP_OK, true); }, 0);
@@ -10128,6 +10141,17 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     bit.dispatchEvent(new Event('change', { bubbles: true }));
     return fl;
   }
+  // A drill's point from the tool table: its taper angle (a half angle, as
+  // for a V-bit) or an angle in its name, else the usual 118°. A ball nose
+  // is full width half its diameter up, as a 90° point; a flat bit 180°.
+  function drillTipAngle(t) {
+    if (t.type === 'drill' || (!t.type && /\bdrill\b/i.test(t.name))) {
+      var a = vBitAngle(t);
+      return a >= 60 && a <= 180 ? a : 118;
+    }
+    if (t.type === 'ball') return 90;
+    return t.type === 'flat' || t.type === 'surfacing' ? 180 : null;
+  }
   function pickBitTool(v) {
     var bit = $('qc-bit');
     closeToolPop();
@@ -10139,6 +10163,14 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       // A bit picked from the tool table gets its own starting feeds, even
       // over ones typed by hand, when a material is picked.
       if ($('qc-material').value) { setFeedsAuto(true); setTimeout(function() { fillStartingFeeds(true); }, 0); }
+      // Tip Angle follows a bit picked for drilling, not one picked on another
+      // tab (a V-bit for a chamfer) that a typed diameter would then keep.
+      var tip = state.currentTab === 'drill' && !$('qc-chamfer-enable').checked ? drillTipAngle(t) : null;
+      if (tip) {
+        $('qc-drl-tip-angle').value = String(tip);
+        updateDrillPreview();
+        if ($('qc-drl-depth-mode').value === 'full') chamferMsg += ' Tip Angle ' + tip + '\u00b0.';
+      }
       if (state.chamferMode) {
         chamferForPickedTool(t);
         if (vBitOf(t) == null) chamferMsg = ' This isn\u2019t a V-bit: chamfer with a V-bit.';
@@ -12500,6 +12532,8 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     return withPatternGaps('drl', Object.assign({}, common, {
       depth:         num('qc-drl-depth', 0),
       peckDepth:     num('qc-drl-peck', 0),
+      depthMode:     $('qc-drl-depth-mode').value,
+      tipAngle:      num('qc-drl-tip-angle', 118),
       peckMode:      $('qc-drl-peck-mode').value,
       dwell:         num('qc-drl-dwell', 0),
       origin:        $('qc-drl-origin').value,
@@ -12520,6 +12554,11 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
   var DRILL_PREVIEW_MAX = 2500;
   // Past this many copies the Rectangle's top view shows the first one only.
   var RECT_PREVIEW_MAX = 400;
+  // How much deeper the point goes than Total Depth (Drill Tip Through), now.
+  function drillTipNow() {
+    return makeQuickCutGenerator(state.isImperial).drillTipLength({
+      depthMode: $('qc-drl-depth-mode').value, tipAngle: num('qc-drl-tip-angle', 118), bitDiameter: num('qc-bit', 0) });
+  }
   function updateDrillPreview() {
     // Drawn when Drill is in view (switchTab draws it on the way in).
     if (!$('qc-drl-preview') || !$('qc-drl-preview').closest('.qc-content.active')) return;
@@ -12528,7 +12567,9 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     // Peck Retract only means something with pecks: a Peck Depth of 0, or
     // the whole hole or more, is one plunge.
     var peck = num('qc-drl-peck', 0);
-    $('qc-drl-peck-mode').closest('.qc-field').style.visibility = peck > 0 && peck < num('qc-drl-depth', 0) ? '' : 'hidden';
+    $('qc-drl-tip-row').style.display = $('qc-drl-depth-mode').value === 'full' && !$('qc-chamfer-enable').checked ? '' : 'none';
+    var tipLen = drillTipNow();
+    $('qc-drl-peck-mode').closest('.qc-field').style.visibility = peck > 0 && peck < num('qc-drl-depth', 0) + tipLen ? '' : 'hidden';
     ROOT.querySelectorAll('#qc-drl-peck-seg button').forEach(function(b) {
       var on = b.getAttribute('data-v') === $('qc-drl-peck-mode').value;
       b.classList.toggle('on', on); b.setAttribute('aria-checked', on ? 'true' : 'false');
@@ -12776,7 +12817,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     var svg = document.getElementById('qc-drl-side');
     if (!svg) return;
     if ($('qc-chamfer-enable').checked) return drillChamferSide(svg);
-    var u = state.unitLabel, depth = num('qc-drl-depth', 0), peck = num('qc-drl-peck', 0), dwell = Math.max(0, num('qc-drl-dwell', 0));
+    var u = state.unitLabel, tipLen = drillTipNow(), depth = num('qc-drl-depth', 0) + tipLen, peck = num('qc-drl-peck', 0), dwell = Math.max(0, num('qc-drl-dwell', 0));
     var full = $('qc-drl-peck-mode').value !== 'break';
     var pecking = peck > 0 && depth > 0 && peck < depth, n = pecking ? Math.ceil(depth / peck - 1e-9) : 1;
     var D = 80, top = -18;
@@ -12795,8 +12836,9 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     var bore = CUT_REDUCED ? '' : '<animate attributeName="height" values="' + bv.map(function(v) { return v.toFixed(1); }).join(';') + '" keyTimes="' + kt + '" dur="' + dur.toFixed(2) + 's" repeatCount="indefinite"/>';
     var marks = '';
     if (pecking) for (var m = 1; m < n; m++) { var y = 152 + D * (m * peck) / depth; marks += '<line x1="168" y1="' + y.toFixed(1) + '" x2="206" y2="' + y.toFixed(1) + '" class="qc-fig-ext" stroke-dasharray="3 3"/>'; }
-    var dl = (depth > 0 ? depth : '?') + ' ' + u;
-    var note = !pecking ? 'One plunge, no pecking' : n + ' pecks of up to ' + peck + ' ' + u + ', ' + (full ? 'full' : 'short') + ' retract';
+    var dl = (depth > 0 ? roundDisplay(depth) : '?') + ' ' + u;
+    var tipNote = tipLen > 0 ? 'Drill tip through: the point ' + roundDisplay(tipLen) + ' ' + u + ' deeper' : '';
+    var note = (!pecking ? 'One plunge, no pecking' : n + ' pecks of up to ' + peck + ' ' + u + ', ' + (full ? 'full' : 'short') + ' retract');
     if (dwell > 0) note += ', ' + dwell + ' s dwell';
     svg.innerHTML =
       '<defs>' +
@@ -12822,13 +12864,16 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       '<line x1="276" y1="152" x2="296" y2="152" class="qc-fig-ext"/><line x1="276" y1="232" x2="296" y2="232" class="qc-fig-ext"/>' +
       '<line x1="288" y1="156" x2="288" y2="228" class="qc-fig-dim" marker-start="url(#qc-drl-a)" marker-end="url(#qc-drl-a)"/>' +
       cutPill(288, 192, dl, true) +
-      '<text x="150" y="276" class="qc-fig-note">' + note + '</text>';
+      '<text x="150" y="276" class="qc-fig-note">' + note + '</text>' +
+      (tipNote ? '<text x="150" y="294" class="qc-fig-note">' + tipNote + '</text>' : '');
   }
 
   function wireDrillForm() {
     // Bit Diameter lives in the shared Tool card; it sets the hole size.
     $('qc-bit').addEventListener('input', updateDrillPreview);
     $('qc-drl-peck').addEventListener('input', updateDrillPreview);
+    $('qc-drl-depth-mode').addEventListener('change', function() { updateDrillPreview(); if (typeof updateDrillSide === 'function') updateDrillSide(); });
+    $('qc-drl-tip-angle').addEventListener('input', function() { updateDrillPreview(); if (typeof updateDrillSide === 'function') updateDrillSide(); });
     $('qc-drl-depth').addEventListener('input', updateDrillPreview);
     $('qc-drl-dwell').addEventListener('input', updateDrillSide);
     ['qc-chamfer-enable', 'qc-chamfer-width', 'qc-chamfer-angle', 'qc-chamfer-hole'].forEach(function(id) {
@@ -13739,7 +13784,9 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       'There&rsquo;s no Depth of Cut: a shallower pass would cut the narrow neck out to the full head width.',
       'X0 Y0 starts at the <strong>plunge hole</strong>; tap it on the preview to go back to it. The Origin picker&rsquo;s dots are the box around the whole cut, which you can also tap on the preview: a corner, edge midpoint or its center.' ] },
     drill: { name: 'Drill', notes: [
-      'Holes the size of the <strong>Bit Diameter</strong>. Every Z move is at the <strong>Plunge Rate</strong>, so Feed Rate is greyed out.',
+      'Holes the size of the <strong>Bit Diameter</strong>. Every Z move is at the <strong>Plunge Rate</strong>, so Feed Rate is hidden.',
+      'The <strong>Total Depth</strong> label is a menu. <strong>Total Depth</strong> is how deep the bit&rsquo;s point goes. <strong>Drill Tip Through</strong> is for a hole right through at full size: the hole is its full diameter all the way down, and the point goes deeper by the length of its tip. Fusion 360 calls it <em>Drill tip through bottom</em>. For a clean exit, make the depth the stock&rsquo;s thickness plus about 0.5&nbsp;mm (0.02&nbsp;in); the tip is added to that.',
+      '<strong>Tip Angle</strong> shows with Drill Tip Through. Picking a tool in the Bit Diameter menu on this tab fills it in: a drill&rsquo;s angle from the tool table or its name, else 118&deg;; 90&deg; for a ball nose; 180&deg; for a flat end mill, which adds nothing. The program&rsquo;s first lines give the Z the point reaches.',
       '<strong>Peck Depth</strong> 0 drills in one plunge. Otherwise each peck goes that much deeper, then <strong>Full</strong> lifts above the surface to clear chips, or <strong>Short</strong> backs off 0.5 mm (0.02") to break the chip. <strong>Dwell at Bottom</strong> pauses at full depth.',
       'With a pattern, the Origin is a point of the <strong>box around the holes</strong>, OR tap a hole in the preview to make that hole X0 Y0.',
       HELP_CHAMFER + ' On Drill, the card asks for the <strong>Hole Diameter</strong> (the drill&rsquo;s size, as the Tool card holds the V-bit), and the Feed Rate comes back on for the chamfer&rsquo;s laps; keep the Origin and pattern the drill program used, so each chamfer lands on its hole.' ] },
@@ -18172,17 +18219,28 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     //          chips, then rapid back to 0.5mm above the bottom.
     //   break: after each peck, back off 0.5mm to snap the chip.
     // An optional dwell at the bottom cleans up the hole floor.
+    // Drill Tip Through (Fusion 360's "Drill tip through bottom"): the bit's
+    // full width reaches the depth, so its point goes deeper by the length of
+    // its tip (0 for a flat bit, 180\u00b0).
+    function drillTipLength(params) {
+      var a = params.tipAngle;
+      if (params.depthMode !== 'full' || !(a > 0 && a < 180)) return 0;
+      return params.bitDiameter / 2 / Math.tan(a * Math.PI / 360);
+    }
+
     function generateDrillProgram(params) {
       if (params.chamfer && params.chamfer.width > 0) return generateDrillChamferProgram(params);
       var unitsLabel = isImperial ? 'inch' : 'mm';
       var positions = computePatternPositions(params.pattern);
-      var peck = params.peckDepth > 0 && params.peckDepth < params.depth ? params.peckDepth : 0;
+      var tip = drillTipLength(params);
+      var depth = params.depth + tip;
+      var peck = params.peckDepth > 0 && params.peckDepth < depth ? params.peckDepth : 0;
       var mode = params.peckMode === 'break' ? 'break' : 'clear';
 
       var origin = resolveDrillOrigin(params.origin, params.pattern, positions, params.bitDiameter, params.inset);
 
       var extras = [
-        'Depth: ' + params.depth + unitsLabel,
+        'Depth: ' + params.depth + unitsLabel + (tip ? ', drill tip through: the point to Z-' + fixed(depth, 3) + ', ' + fixed(tip, 3) + unitsLabel + ' deeper for a ' + params.tipAngle + '\u00b0 tip' : ''),
         'Peck: ' + (peck ? peck + unitsLabel + ', ' + (mode === 'break' ? 'short retract' : 'full retract') : 'none'),
         'Origin: ' + origin.label
       ];
@@ -18210,7 +18268,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
           lines.push('(Hole ' + (p + 1) + '/' + positions.length +
                      ' at X' + fixed(mx, 3) + ' Y' + fixed(my, 3) + ')');
         }
-        emitOneHole(lines, params, mx, my, peck, mode);
+        emitOneHole(lines, params, depth, mx, my, peck, mode);
       }
 
       lines.push('');
@@ -18218,11 +18276,10 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       return lines.join('\n');
     }
 
-    function emitOneHole(lines, params, x, y, peck, mode) {
+    function emitOneHole(lines, params, depth, x, y, peck, mode) {
       var safeHeight = safeHopDelta.toFixed(3);
       var clearance = (isImperial ? (2 * 0.0393701) : 2).toFixed(3);
       var backoff = isImperial ? 0.5 * 0.0393701 : 0.5;
-      var depth = params.depth;
 
       lines.push('G0 X' + fixed(x, xyDp) + ' Y' + fixed(y, xyDp));
       lines.push('G0 Z' + safeHeight);
@@ -18263,6 +18320,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       trapezoidCorners: trapezoidCorners,
       generateKeyholeProgram: generateKeyholeProgram,
       generateDrillProgram: generateDrillProgram,
+      drillTipLength: drillTipLength,
       computePatternPositions: computePatternPositions,
       computePatternAnchorShift: computePatternAnchorShift,
       tabIntervals: tabIntervals,
