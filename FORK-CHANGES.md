@@ -31,3 +31,33 @@ and `fork/spindle-delay-394` (tests added at the end of `tests/quickcut-gcode.te
 
 **On a machine:** all of them were in the Pi test builds 0.1.23-test.9 to test.12 (ncSender Pro, grblHAL, RapidChange
 ATC) and checked in the dialog; none is confirmed by a real cut yet.
+
+## Open on siganberg/ncsender-plugin-quickcut
+
+These have PRs upstream (made from `main` at 0fd08fe too) and are merged into `combined/0.1.23`. #19 to #23 are
+stacked: each builds on the one before.
+
+| PR | Branch | What it does |
+| --- | --- | --- |
+| #11 | `fix/cutter-bit-in-waste` | Same as `fork/cutter-bit-in-waste`. |
+| #12 | `fix/flutes-no-table-info` | Same as `fork/flutes-no-table-info`. |
+| #13 | `fix/unit-comma-message` | Unit fields say why `1,000` is refused. |
+| #14 | `fix/machine-limits` | Rates, RPM and depth past the machine's limits are flagged. |
+| #15 | `fix/label-menu-focus` | Same as `fork/label-menu-focus`. |
+| #16 | `fix/tab-markers` | Previews draw holding tabs as the stretch of the bit's path they leave standing. |
+| #17 | `fix/tabs-nothing-to-hold` | No tabs on an Inside cut that clears the whole inside. |
+| #18 | `fix/tabs-fit-edges` | Tabs the full-depth passes would cut through, or left on a point, are dropped, with a warning. |
+| #19 | `feat/new-preview-rect-kinds` | The new top view (stock, animated bit path, the bit) for Trapezoid, Triangle, Arch and Ellipse, through one shared renderer. |
+| #20 | `feat/new-preview-circle` | Circle in the new top view. |
+| #21 | `feat/new-preview-polygon` | Polygon and Star in the new top view. |
+| #22 | `feat/new-preview-slot` | Slot and Arc Slot in the new top view. |
+| #23 | `feat/new-preview-keyhole` | Keyhole in the new top view. |
+| #24 | `fix/hatch-contrast` | A stronger hatch on the stock that comes away. |
+| #25 | `fix/preview-bit-size` | The bit drawn to scale (a small one still big enough to see), its cut off the edge; Inset label size. |
+| #26 | `fix/chamfer-rect-kind` | Chamfer's Rect edge names the Rectangle card's shape, and a menu picks it. |
+| #27 | `feat/flute-depth-note` | A note by Generate when Total Depth goes past the tool's flutes. |
+| #28 | `fix/chamfer-vbit` | Chamfer picks a V-bit from the tool table, warns when the bit isn't one, and leaves the shape's Depth of Cut alone. |
+
+**Fixes on `combined/0.1.23` only** (from a review of the merge, not yet in a PR): previews draw a pattern's tabs on
+each copy, follow arcs, and leave out the tabs the program drops; the side view only says tabs hold the part when
+some are cut.
