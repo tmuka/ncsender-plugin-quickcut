@@ -243,6 +243,11 @@
     letter-spacing: 0.02em;
     cursor: pointer;
   }
+  /* No focus box: the browser's ring drew round the whole tap area, over
+     the field below. Focused, the label takes the accent colour instead
+     (Chrome draws no underline on a select). */
+  .qc-label-select:focus, .qc-label-select:focus-visible { outline: none !important; box-shadow: none !important; border: none !important; }
+  .qc-label-select:focus-visible { color: color-mix(in srgb, var(--color-accent) 55%, var(--color-text-primary)); }
   .qc-help-card ul {
     margin: 0;
     padding-left: 18px;
@@ -7014,13 +7019,14 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
         setPreviewEnlarged(cell, !cell.classList.contains('qc-preview-big'));
       });
     });
-    // Esc closes an enlarged preview, not the dialog: ncSender closes the
+    // Esc closes the tool menu, the Load panel or an enlarged preview, not
+    // the dialog: ncSender closes the
     // dialog from a window keydown listener (bubble phase), so this one
     // runs first in the capture phase and stops it. Page-wide, so it
     // removes itself once this open's dialog is gone.
     function closeEnlargedOnEscape(evt) {
       if (!rootAlive()) { window.removeEventListener('keydown', closeEnlargedOnEscape, true); return; }
-      if (evt.key !== 'Escape' || !(closeLoadPanel() || closeEnlargedPreview())) return;
+      if (evt.key !== 'Escape' || !(closeToolPopForEscape() || closeLoadPanel() || closeEnlargedPreview())) return;
       evt.preventDefault();
       evt.stopPropagation();
     }
@@ -10004,6 +10010,14 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     pop.style.top = (room >= Math.min(pop.offsetHeight, 240) ? below : Math.max(8, r.top - w.top - pop.offsetHeight - 4)) + 'px';
     renderToolList();
     $('qc-tool-filter').focus();
+  }
+  // Esc in the tool menu: closed, the focus back on its label; true if it was open.
+  function closeToolPopForEscape() {
+    if (!toolPop.open) return false;
+    closeToolPop();
+    var btn = $('qc-bit-tool');
+    if (btn) btn.focus();
+    return true;
   }
   function closeToolPop() {
     toolPop.open = false;
