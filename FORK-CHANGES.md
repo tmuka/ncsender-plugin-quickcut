@@ -57,7 +57,7 @@ stacked: each builds on the one before.
 | #26 | `fix/chamfer-rect-kind` | Chamfer's Rect edge names the Rectangle card's shape, and a menu picks it. |
 | #27 | `feat/flute-depth-note` | A note by Generate when Total Depth goes past the tool's flutes. |
 | #28 | `fix/chamfer-vbit` | Chamfer picks a V-bit from the tool table, warns when the bit isn't one, and leaves the shape's Depth of Cut alone. |
+| #29 | `fix/tab-preview-per-copy` | Previews draw a pattern's tabs on each copy, follow arcs, and leave out the tabs the program drops; the side view only says tabs hold the part when some are cut (builds on #16 to #23). |
+| #30 | `fix/chamfer-pattern-gaps` | Chamfer measures a pattern's X / Y Gap on the cut, instead of taking it as the distance between centers (the bevels were cut in the wrong places). |
+| #31 | `fix/chamfer-preview-stock` | An Outside chamfer's preview keeps the stock and the cut's slot round each part, framed like the shape's own (builds on #19). |
 
-**Fixes on `combined/0.1.23` only** (from a review of the merge, not yet in a PR): previews draw a pattern's tabs on
-each copy, follow arcs, and leave out the tabs the program drops; the side view only says tabs hold the part when
-some are cut.
