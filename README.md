@@ -233,7 +233,7 @@ Plunges a hole the size of the bit, or one at every position of a [pattern](#pat
 - The **Total Depth** label is a menu:
   - **Total Depth** is how deep the bit's point goes.
   - **Drill Tip Through** is for a hole right through at full size: the hole is its full diameter all the way down, and the point goes deeper by the length of its tip (a 6.35 mm, 118° drill goes 1.91 mm deeper). Fusion 360 calls it *Drill tip through bottom*. For a clean exit, make the depth the stock's thickness plus about 0.5 mm (0.02"); the tip is added to that.
-  - **Tip Angle** shows with Drill Tip Through, from 60° to 180°. Picking a tool in the Bit Diameter menu on the Drill tab fills it in: a drill's angle from the tool table or its name, else 118°; 90° for a ball nose; 180° for a flat end mill, which adds nothing. The program's first lines give the Z the point reaches.
+  - **Tip Angle** shows with Drill Tip Through, from 60° to 180°. Picking a tool in the Bit Diameter menu on the Drill tab fills it in: a drill's angle from the tool table or its name, else 118°; 90° for a ball nose or tapered ball nose; 180° for a flat end mill, which adds nothing. The program's first lines give the Z the point reaches.
 - **Peck Depth** 0 drills in one plunge. Otherwise each peck goes that much deeper, then:
   - **Full (clear chips)** rapids up to 2 mm (0.079") above the surface to clear chips, then rapids back down to 0.5 mm (0.02") above the bottom of the hole and continues.
   - **Short (break chips)** backs off 0.5 mm (0.02") to snap the chip and continues.
