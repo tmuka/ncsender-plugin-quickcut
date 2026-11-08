@@ -5024,33 +5024,11 @@
       return 'Top Width is the same as Bottom Width; pick Rectangle in the title for that';
     }
 
-    // Cross-field: Depth of Cut can't be deeper than Total Depth — a
-    // single pass to that depth would overshoot the requested total.
-    if (id === 'qc-rect-step') {
-      var rTot = okNum('qc-rect-depth');
-      if (isFinite(rTot) && n > rTot) return 'Depth of Cut must not exceed Total Depth (' + rTot + ')';
-    }
-    if (id === 'qc-circ-step') {
-      var cTot = okNum('qc-circ-depth');
-      if (isFinite(cTot) && n > cTot) return 'Depth of Cut must not exceed Total Depth (' + cTot + ')';
-    }
     // Target Thickness: Z0 is on the wasteboard, so removing the whole
     // stock or more would cut into it.
     if (id === 'qc-plan-depth' && $('qc-plan-mode').value === 'thickness') {
       var start = okNum('qc-plan-start-thickness');
       if (isFinite(start) && n >= start - 1e-9) return 'Amount to Remove must be less than the Starting Thickness (' + start + '), or the bit cuts into the wasteboard';
-    }
-    if (id === 'qc-plan-step') {
-      var pTot = okNum('qc-plan-depth');
-      if (isFinite(pTot) && n > pTot) return 'Depth of Cut must not exceed Total Depth (' + pTot + ')';
-    }
-    if (id === 'qc-join-step') {
-      var jTot = okNum('qc-join-depth');
-      if (isFinite(jTot) && n > jTot) return 'Depth of Cut must not exceed Total Depth (' + jTot + ')';
-    }
-    if (id === 'qc-poly-step') {
-      var pgTot = okNum('qc-poly-depth');
-      if (isFinite(pgTot) && n > pgTot) return 'Depth of Cut must not exceed Total Depth (' + pgTot + ')';
     }
     // An Overall size holds at least one copy.
     var extentOf = /^qc-(\w+)-pattern-([xy])-dist$/.exec(id);
@@ -5082,10 +5060,6 @@
       var polyA = polyD / 2 * Math.cos(Math.PI / polyN);
       if (isFinite(polyA) && n > polyA + 1e-9) return 'Corner Radius must not exceed ' + roundDisplay(polyA) + ' (half the size across the flats)';
     }
-    if (id === 'qc-slt-step') {
-      var sTot = okNum('qc-slt-depth');
-      if (isFinite(sTot) && n > sTot) return 'Depth of Cut must not exceed Total Depth (' + sTot + ')';
-    }
     if (id === 'qc-slt-sweep' && n === 0) return 'Sweep must not be 0';
     // Radius 0 turns each copy about one center: only Path Direction turns them.
     if (id === 'qc-slt-pattern-radius' && n === 0 && patternRadiusMode('slt') === 'center' && $('qc-slt-pattern-style').value !== 'circular-follow') {
@@ -5100,10 +5074,6 @@
     if (tabDepth) {
       var tTot = okNum('qc-' + tabDepth[1] + '-depth');
       if (isFinite(tTot) && n >= tTot) return 'Tab Height must be less than Total Depth (' + tTot + ')';
-    }
-    if (id === 'qc-cut-step') {
-      var kTot = okNum('qc-cut-depth');
-      if (isFinite(kTot) && n > kTot) return 'Depth of Cut must not exceed Total Depth (' + kTot + ')';
     }
     return null;
   }
@@ -5263,8 +5233,9 @@
         el.addEventListener('blur', function() { recheckField(fieldId); });
       })(id);
     }
-    // Cross-field: when Total Depth is changed, re-check Depth of Cut so
-    // the operator sees the DOC error without having to visit it.
+    // Cross-field: when Total Depth is changed, re-check Tab Height so the
+    // operator sees its error without having to visit it. (A Depth of Cut
+    // past Total Depth is fine: it's the most a pass takes, one pass here.)
     wireDepthCrossCheck('rect');
     wireDepthCrossCheck('circ');
     wireDepthCrossCheck('poly');
@@ -10307,7 +10278,8 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     }
     // No pass deeper than the flutes, when the tool table gives them.
     if (D.fluteMm > 0) step = Math.min(step, D.fluteMm);
-    var pass = D.stepMm > 0 ? D.stepMm : step, ratio = bitMm > 0 ? pass / bitMm : 0;
+    // A typed Depth of Cut past Total Depth is one pass of Total Depth.
+    var pass = D.stepMm > 0 ? (D.depthMm > 0 ? Math.min(D.stepMm, D.depthMm) : D.stepMm) : step, ratio = bitMm > 0 ? pass / bitMm : 0;
     // deepChip: how much the deep pass took off the feed, after the caps.
     var shallow = Math.min(maxFeed, Math.max(150, raw));
     if (!m.keepChip && ratio > 1 && raw > 0) {
@@ -12909,7 +12881,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       '</g></g>' +
       (D ? '<line x1="276" y1="' + top + '" x2="296" y2="' + top + '" class="qc-fig-ext"/><line x1="276" y1="' + (top + D) + '" x2="296" y2="' + (top + D) + '" class="qc-fig-ext"/>' +
         '<line x1="288" y1="' + (top + 4) + '" x2="288" y2="' + (top + D - 4) + '" class="qc-fig-dim" marker-start="url(#' + P + 'a)" marker-end="url(#' + P + 'a)"/>' + cutPill(288, top + D / 2, dl, true) : '') +
-      '<text x="150" y="' + (top + H + 26) + '" class="qc-fig-note">' + (n ? n + (n === 1 ? ' pass' : ' passes') + ' of up to ' + doc + ' ' + u + (n > shown ? ' (first ' + shown + ' shown)' : '') : 'Set the depth and Depth of Cut') + '</text>' +
+      '<text x="150" y="' + (top + H + 26) + '" class="qc-fig-note">' + (n ? (n === 1 ? '1 pass of ' + depth : n + ' passes of up to ' + doc) + ' ' + u + (n > shown ? ' (first ' + shown + ' shown)' : '') : 'Set the depth and Depth of Cut') + '</text>' +
       '<text x="150" y="' + (top + H + 44) + '" class="qc-fig-note">' + (dir === 'both' ? 'cutting both ways' : 'one way, back lifted') + ', down beside the stock, never into it</text>';
   }
 
@@ -13125,7 +13097,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       '<line x1="276" y1="' + top + '" x2="296" y2="' + top + '" class="qc-fig-ext"/><line x1="276" y1="' + (top + D) + '" x2="296" y2="' + (top + D) + '" class="qc-fig-ext"/>' +
       '<line x1="288" y1="' + (top + 4) + '" x2="288" y2="' + (top + D - 4) + '" class="qc-fig-dim" marker-start="url(#' + P + 'qc-side-a)" marker-end="url(#' + P + 'qc-side-a)"/>' +
       cutPill(288, top + D / 2, dl, D > 40) + thickDim +
-      '<text x="150" y="' + (top + H + 26) + '" class="qc-fig-note">' + (n ? n + (n === 1 ? ' pass' : ' passes') + ' of up to ' + doc + ' ' + u : 'Set the depth and Depth of Cut') + '</text>' +
+      '<text x="150" y="' + (top + H + 26) + '" class="qc-fig-note">' + (n ? (n === 1 ? '1 pass of ' + depth : n + ' passes of up to ' + doc) + ' ' + u : 'Set the depth and Depth of Cut') + '</text>' +
       (o.note2 ? '<text x="150" y="' + (top + H + 44) + '" class="qc-fig-note">' + o.note2 + '</text>' : '');
   }
   // Side view: the bit stepping down a pass at a time.
@@ -13157,7 +13129,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       '<line x1="276" y1="152" x2="296" y2="152" class="qc-fig-ext"/><line x1="276" y1="232" x2="296" y2="232" class="qc-fig-ext"/>' +
       '<line x1="288" y1="156" x2="288" y2="228" class="qc-fig-dim" marker-start="url(#qc-cut-a2)" marker-end="url(#qc-cut-a2)"/>' +
       cutPill(288, 192, dl, true) +
-      '<text x="150" y="258" class="qc-fig-note">' + (passes ? passes + (passes === 1 ? ' pass' : ' passes') + ' of up to ' + doc + ' ' + u : 'Set Total Depth and Depth of Cut') + '</text>' +
+      '<text x="150" y="258" class="qc-fig-note">' + (passes ? (passes === 1 ? '1 pass of ' + depth : passes + ' passes of up to ' + doc) + ' ' + u : 'Set Total Depth and Depth of Cut') + '</text>' +
       '<text x="150" y="276" class="qc-fig-note">a little past the stock, into the wasteboard</text>';
   }
 

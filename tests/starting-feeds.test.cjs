@@ -172,3 +172,12 @@ test('a big compression bit cuts full depth only on Aggressive', () => {
   const q = (style) => startingFeeds(6.35, 2, 'mdf', null, style, { compression: true, depthMm: 19.05, fluteMm: 25.4 }).passes;
   assert.deepEqual([q('conservative'), q('average'), q('aggressive')], [1, 1, 1]);
 });
+
+test('a typed Depth of Cut past Total Depth is one pass of Total Depth: the same feeds as typing Total Depth', () => {
+  for (const style of ['conservative', 'average', 'aggressive']) {
+    const over = startingFeeds(6.35, 2, 'mdf', {}, style, { depthMm: 5, stepMm: 20 });
+    const same = startingFeeds(6.35, 2, 'mdf', {}, style, { depthMm: 5, stepMm: 5 });
+    assert.equal(over.feedMm, same.feedMm, style);
+    assert.equal(over.chipMm, same.chipMm, style);
+  }
+});
