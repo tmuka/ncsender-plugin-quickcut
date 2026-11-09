@@ -3324,7 +3324,7 @@
                 <div class="qc-row-2" id="qc-drl-tip-row" style="display: none;">
                   <div class="qc-field">
                     <label for="qc-drl-tip-angle">Tip Angle (°)</label>
-                    <input class="qc-input" type="number" id="qc-drl-tip-angle" min="60" max="180" step="1" value="118" title="The angle of the bit's point: 118 for most drills, 135 for some. 90 for a ball nose; 180 for a flat end mill, which adds nothing. Picking a tool in the Bit Diameter menu on this tab fills it from the tool table.">
+                    <input class="qc-input" type="number" id="qc-drl-tip-angle" min="60" max="180" step="1" value="118" title="The angle of the bit's point: 118 for most drills, 135 for some. 90 for a ball nose or tapered ball nose; for a bull nose or bowl bit, the angle that reaches its full width at its corner radius; 180 for a flat end mill, which adds nothing. Picking a tool in the Bit Diameter menu on this tab fills it from the tool table.">
                   </div>
                 </div>
                 <div class="qc-field">
@@ -10094,12 +10094,22 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
   // A drill's point from the tool table: its taper angle (a half angle, as
   // for a V-bit) or an angle in its name, else the usual 118°. A ball nose
   // is full width half its diameter up, as a 90° point; a flat bit 180°.
+  // A tapered ball nose (ncSender's tapered-ball) too: its diameter is the
+  // tip's, which the taper reaches a little under half of it up, so 90°
+  // drills a hair past. A bull nose or bowl bit (bull-nose) reaches its full
+  // diameter its corner radius up: the point that does the same, 90° for a
+  // corner of half the diameter, 180° (flat) with none.
   function drillTipAngle(t) {
     if (t.type === 'drill' || (!t.type && /\bdrill\b/i.test(t.name))) {
       var a = vBitAngle(t);
       return a >= 60 && a <= 180 ? a : 118;
     }
-    if (t.type === 'ball') return 90;
+    if (t.type === 'ball' || t.type === 'tapered-ball') return 90;
+    if (t.type === 'bull-nose') {
+      var rc = t.dimensions && t.dimensions.radius, half = t.diameter / 2;
+      if (!(rc > 0) || !(half > 0)) return 180;
+      return Math.round(Math.atan(half / Math.min(rc, half)) * 3600 / Math.PI) / 10;
+    }
     return t.type === 'flat' || t.type === 'surfacing' ? 180 : null;
   }
   function pickBitTool(v) {
@@ -13733,7 +13743,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     drill: { name: 'Drill', notes: [
       'Holes the size of the <strong>Bit Diameter</strong>. Every Z move is at the <strong>Plunge Rate</strong>, so Feed Rate is hidden.',
       'The <strong>Total Depth</strong> label is a menu. <strong>Total Depth</strong> is how deep the bit&rsquo;s point goes. <strong>Drill Tip Through</strong> is for a hole right through at full size: the hole is its full diameter all the way down, and the point goes deeper by the length of its tip. Fusion 360 calls it <em>Drill tip through bottom</em>. For a clean exit, make the depth the stock&rsquo;s thickness plus about 0.5&nbsp;mm (0.02&nbsp;in); the tip is added to that.',
-      '<strong>Tip Angle</strong> shows with Drill Tip Through. Picking a tool in the Bit Diameter menu on this tab fills it in: a drill&rsquo;s angle from the tool table or its name, else 118&deg;; 90&deg; for a ball nose; 180&deg; for a flat end mill, which adds nothing. The program&rsquo;s first lines give the Z the point reaches.',
+      '<strong>Tip Angle</strong> shows with Drill Tip Through. Picking a tool in the Bit Diameter menu on this tab fills it in: a drill&rsquo;s angle from the tool table or its name, else 118&deg;; 90&deg; for a ball nose or tapered ball nose; for a bull nose or bowl bit, the angle that reaches its full width at its corner radius; 180&deg; for a flat end mill, which adds nothing. The program&rsquo;s first lines give the Z the point reaches.',
       '<strong>Peck Depth</strong> 0 drills in one plunge. Otherwise each peck goes that much deeper, then <strong>Full</strong> lifts above the surface to clear chips, or <strong>Short</strong> backs off 0.5 mm (0.02") to break the chip. <strong>Dwell at Bottom</strong> pauses at full depth.',
       'With a pattern, the Origin is a point of the <strong>box around the holes</strong>, OR tap a hole in the preview to make that hole X0 Y0.',
       HELP_CHAMFER + ' On Drill, the card asks for the <strong>Hole Diameter</strong> (the drill&rsquo;s size, as the Tool card holds the V-bit), and the Feed Rate comes back on for the chamfer&rsquo;s laps; keep the Origin and pattern the drill program used, so each chamfer lands on its hole.' ] },
