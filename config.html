@@ -10354,6 +10354,13 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       (v === 'aluminum' ? ' Aluminum: a 1-flute bit, and air or mist.' : '') +
       ' A start: listen, look at the chips, and adjust.', TOOLTIP_OK, true); }, 0);
   }
+  // The open tab's typed Depth of Cut goes back to the starting feeds'.
+  function forgetTypedStep() {
+    var pre = state.chamferMode ? null : TAB_PREFIX[state.currentTab];
+    if (!pre || !state.stepTyped[pre]) return;
+    delete state.stepTyped[pre];
+    persistSettings({ common: { stepTyped: state.stepTyped } });
+  }
   // Typing (or arrow-stepping) a feed, the RPM or a Stepover keeps the
   // feeds from being filled in again. A Depth of Cut typed is kept, and
   // the feed follows it (a deep pass takes a thinner chip); a new Total
@@ -10412,8 +10419,10 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       showBitTool();
       fillStartingFeeds(false);
     });
-    // A new bit gets its own feeds, unless they've been changed by hand.
-    $('qc-bit').addEventListener('change', function() {
+    // A new bit gets its own feeds, unless they've been changed by hand,
+    // and its own Depth of Cut: one typed was for the old bit.
+    $('qc-bit').addEventListener('change', function(e) {
+      if (e.isTrusted) forgetTypedStep();
       if (state.feedsAuto) setTimeout(function() { fillStartingFeeds(true); }, 0);
     });
     ROOT.addEventListener('input', function(e) { if (e.isTrusted) noteHandEdit(e.target); });
@@ -10621,6 +10630,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
   // new feeds use them. Returns the flutes.
   function applyBitTool(t) {
     var bit = $('qc-bit');
+    if (t.n !== bitTool().n) forgetTypedStep();
     var fl = flutesFromTool(t);
     bit.value = roundDisplay(mmToDisplay(t.mm));
     setBitTool(t.n, t.mm);
