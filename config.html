@@ -10488,7 +10488,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     pop.className = 'qc-tool-pop';
     pop.id = 'qc-tool-pop';
     pop.hidden = true;
-    pop.innerHTML = '<input class="qc-input qc-tool-filter" id="qc-tool-filter" type="text" autocomplete="off" spellcheck="false" placeholder="Filter: T number, name or size" aria-label="Filter the tools">' +
+    pop.innerHTML = '<input class="qc-input qc-tool-filter" id="qc-tool-filter" type="text" autocomplete="off" spellcheck="false" placeholder="Filter: T number, name or size (1/2, .5, 6mm)" aria-label="Filter the tools">' +
       '<div class="qc-tool-list" id="qc-tool-list" role="listbox" aria-label="Tool table"></div>';
     ROOT.appendChild(pop);
     btn.addEventListener('keydown', function(e) { if (e.key === 'ArrowDown') { e.preventDefault(); openToolPop(); } });
@@ -10564,6 +10564,17 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     var el = $('qc-tool-list').querySelector('.qc-active');
     if (el) el.scrollIntoView({ block: 'nearest' });
   }
+  // A filter word that's a size (.5, 1/2, 12.7mm, 1/2"): the tools that
+  // diameter, not the ones whose name has it (a 2-1/2" overall length would
+  // match 1/2). Without a unit it's either mm or inches; a whole number is
+  // also a T number. null for a word that isn't a size.
+  function toolSizeMatch(w, t) {
+    var mm = NcUnitInput.parseUnitQuantity(w, false, 'length');
+    if (mm == null || !(mm > 0)) return null;
+    var near = function(v) { return Math.abs(t.mm - v) < 0.02; };
+    if (/[a-z"]/.test(w)) return near(mm);
+    return near(mm) || near(mm * 25.4) || (/^\d+$/.test(w) && t.n === +w);
+  }
   // The tools matching every word of the filter (T number, name, notes, size).
   function renderToolList() {
     var list = $('qc-tool-list'), n = bitToolNumber(), u = state.unitLabel;
@@ -10572,7 +10583,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     var tools = (state.tools || []).filter(function(t) {
       if (vOnly && vBitOf(t) == null) return false;
       var hay = ('t' + t.n + ' ' + t.name + ' ' + t.notes + ' ' + roundDisplay(mmToDisplay(t.mm)) + ' ' + u + (t.slot ? ' slot ' + t.slot : '') + (t.n === state.loadedTool ? ' in the spindle' : '')).toLowerCase();
-      return words.every(function(w) { return hay.indexOf(w) >= 0; });
+      return words.every(function(w) { var size = toolSizeMatch(w, t); return size != null ? size : hay.indexOf(w) >= 0; });
     });
     toolPop.items = tools.map(function(t) { return { value: String(t.n), t: t }; });
     if (n) toolPop.items.push({ value: 'none' });
