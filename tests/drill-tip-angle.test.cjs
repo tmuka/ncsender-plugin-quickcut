@@ -34,3 +34,14 @@ test('the other types are as before', () => {
   assert.equal(ctx.drillTipAngle({ name: '1/4" Flat', type: 'flat', diameter: 6.35 }), 180);
   assert.equal(ctx.drillTipAngle({ name: '60° V-bit', type: 'v-bit', diameter: 12.7 }), null);
 });
+
+test('a bull nose or bowl bit: the point that reaches full width at its corner radius', () => {
+  // SpeTool W08002 bowl and tray bit: 3/4" across, 1/4" corners: 2 atan(1.5) = 112.6°
+  const bowl = { name: '3/4" Bowl & Tray', type: 'bull-nose', diameter: 19.05, dimensions: { radius: 6.35 } };
+  assert.equal(ctx.drillTipAngle(bowl), 112.6);
+  // Corners of half the diameter are a ball; none is flat
+  assert.equal(ctx.drillTipAngle({ type: 'bull-nose', diameter: 6, dimensions: { radius: 3 } }), 90);
+  assert.equal(ctx.drillTipAngle({ type: 'bull-nose', diameter: 6, dimensions: { radius: 5 } }), 90);
+  assert.equal(ctx.drillTipAngle({ type: 'bull-nose', diameter: 6 }), 180);
+  assert.equal(ctx.vBitOf(bowl), null);
+});
