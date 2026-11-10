@@ -22,7 +22,7 @@ test('circle: inside copies 25 apart, smallest first, the shape last', () => {
   const starts = g.split('\n').filter(l => /^G0 X\S+ Y0\.000$/.test(l)).map(l => parseFloat(l.slice(4)));
   assert.deepEqual(starts, [23.5, 48.5, 73.5, 98.5]);
   assert.match(g, /\(Echoes: 3 inside, 25mm apart, offset\)/);
-  assert.equal((g.match(/^\((Echo \d|Shape) of 4\)$/gm) || []).length, 4);
+  assert.deepEqual(g.match(/^\((Echo \d|The shape): cut \d of 4\)$/gm), ['(Echo 3: cut 1 of 4)', '(Echo 2: cut 2 of 4)', '(Echo 1: cut 3 of 4)', '(The shape: cut 4 of 4)']);
 });
 
 test('outside copies cut outward, the shape first', () => {
@@ -64,7 +64,7 @@ test('polygon offset moves its flats and rounds its corners', () => {
   const e = list[1].params;
   near(e.radius * Math.cos(Math.PI / n), R * Math.cos(Math.PI / n) + d, 'apothem');
   near(e.cornerRadius, d, 'corner radius');
-  assert.match(gen.generatePolygonProgram({ ...common, sides: n, radius: R, diameter: 2 * R, cutType: 'outer', echoes: echoes({ direction: 'outside', step: d, copies: 1 }) }), /\(Echo 1 of 2\)/);
+  assert.match(gen.generatePolygonProgram({ ...common, sides: n, radius: R, diameter: 2 * R, cutType: 'outer', echoes: echoes({ direction: 'outside', step: d, copies: 1 }) }), /\(Echo 1: cut 2 of 2\)/);
 });
 
 test('star offset keeps its shape: every edge moves the step', () => {
@@ -74,7 +74,7 @@ test('star offset keeps its shape: every edge moves the step', () => {
   // The edge lines' distance from the center drops by 5.
   const h = (q) => { const v = gen.starVertices(q), a = v[0], b = v[1]; return Math.abs(a.x * b.y - a.y * b.x) / Math.hypot(b.x - a.x, b.y - a.y); };
   near(h(p) - h(e), 5, 'edge distance');
-  assert.match(gen.generatePolygonProgram(p), /\(Echo 1 of 2\)/);
+  assert.match(gen.generatePolygonProgram(p), /\(Echo 1: cut 1 of 2\)/);
 });
 
 test('shift and turn grow with each copy', () => {
@@ -86,4 +86,19 @@ test('off, or no copies: the program is the shape alone', () => {
   const base = { ...common, diameter: 50, cutType: 'inner' };
   assert.equal(gen.generateCircleProgram({ ...base, echoes: echoes({ enabled: false }) }), gen.generateCircleProgram(base));
   assert.equal(gen.generateCircleProgram({ ...base, echoes: echoes({ copies: 0 }) }), gen.generateCircleProgram(base));
+});
+
+test('the origin is a corner of the shape and its echoes together', () => {
+  // A 100 x 50 part from its front-left corner with 3 outside echoes 10
+  // apart: nothing goes past X0 Y0 but the bit's radius.
+  const xs = [], ys = [];
+  gen.generateRectangleProgram({ ...common, width: 100, height: 50, cutType: 'outer', origin: 'front-left',
+    echoes: echoes({ direction: 'outside', step: 10 }) }).split('\n').forEach(l => {
+    const x = /X(-?[\d.]+)/.exec(l), y = /Y(-?[\d.]+)/.exec(l);
+    if (/^G[0-3] /.test(l) && x) xs.push(+x[1]);
+    if (/^G[0-3] /.test(l) && y) ys.push(+y[1]);
+  });
+  near(Math.min(...xs), -1.5, 'min X');
+  near(Math.min(...ys), -1.5, 'min Y');
+  near(Math.max(...xs), 160 + 1.5, 'max X');
 });

@@ -6137,8 +6137,13 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       turn: num('qc-' + p + '-echo-turn', 0)
     };
   }
-  function hydrateEchoes(p, e) {
-    if (!e || !$('qc-' + p + '-echo-enable')) return;
+  // A loaded program made without Echoes (older ones too) turns them off.
+  function hydrateEchoes(p, e, loadedShape) {
+    if (!$('qc-' + p + '-echo-enable')) return;
+    if (!e) {
+      if (loadedShape) { $('qc-' + p + '-echo-enable').checked = false; updateEchoCard(p); }
+      return;
+    }
     var pre = 'qc-' + p + '-echo-';
     $(pre + 'enable').checked = !!e.enabled;
     if (e.copies != null) $(pre + 'copies').value = e.copies;
@@ -6184,9 +6189,59 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     if (!on) { note.textContent = ''; return; }
     if (blocked) { note.textContent = blocked; return; }
     var params = ECHO_READERS[p](), shape = echoShape(p), gen = makeQuickCutGenerator(state.isImperial);
-    var plan = gen.echoPlan(params, shape, gen.echoFits(shape)), made = plan.list.length - 1;
+    var plan = gen.echoPlan(params, shape, gen.echoFits(shape)), made = plan.list.length - 1, e = params.echoes;
+    var warn = [];
+    if (echoesCross(p, plan)) warn.push('Copies cross each other (Shift or Turn): with an Inside cut they cut into the part, and Outside ones can cut pieces loose. Check the preview.');
+    var margin = state.isImperial ? 0.125 : 3;
+    if (params.cutType === 'outer' && e.stepMode !== 'ratio' && e.spacing !== 'scale' && made > 0 && e.step < Math.max(0, num('qc-bit', 0)) + margin) {
+      warn.push('Copies closer than the bit plus ' + margin + ' ' + state.unitLabel + ' leave thin rings, held only by Holding Tabs.');
+    }
+    if ($('qc-' + p + '-pattern-enable').checked && e.direction === 'outside' && made > 0) warn.push('The Pattern spaces the shape, not its outside echoes: leave room for them.');
     note.textContent = made + (made === 1 ? ' copy' : ' copies') + ', cut smallest first' +
-      (plan.skipped ? '; ' + plan.skipped + ' too small for the shape or the bit, left out' : '') + '.';
+      (plan.skipped ? '; ' + plan.skipped + ' too small for the shape or the bit, left out' : '') + '.' + (warn.length ? ' ' + warn.join(' ') : '');
+    note.style.color = warn.length ? 'color-mix(in srgb, var(--color-warning, #d9a441) 70%, var(--color-text-primary))' : '';
+  }
+  // A copy's outline (no bit) about its center, for the crossing check.
+  function echoShapeOutline(p, q) {
+    var gen = makeQuickCutGenerator(state.isImperial), shape = echoShape(p);
+    if (shape === 'circle') return [{ type: 'arc', cx: 0, cy: 0, r: q.diameter / 2, a0: 0, a1: 2 * Math.PI, len: Math.PI * q.diameter }];
+    if (shape === 'rectangle') return rectangleOutline(gen, q.width, q.height, q.cornerRadius);
+    if (shape === 'star') return gen.starOutline(q, 0);
+    var n = Math.max(3, Math.min(12, Math.floor(q.sides || 6))), R = q.radius != null ? q.radius : q.diameter / 2, pts = [];
+    var start = Math.PI / n - Math.PI / 2 + (q.startAngleDeg || 0) * Math.PI / 180;
+    for (var j = 0; j < n; j++) pts.push({ x: R * Math.cos(start + j * 2 * Math.PI / n), y: R * Math.sin(start + j * 2 * Math.PI / n) });
+    var nm = pts.map(function(v, j) { var w = pts[(j + 1) % n], len = Math.hypot(w.x - v.x, w.y - v.y) || 1; return { x: (w.y - v.y) / len, y: -(w.x - v.x) / len }; });
+    return gen.convexOutline(pts, nm, 0, Math.min(Math.max(0, q.cornerRadius || 0), R * Math.cos(Math.PI / n)));
+  }
+  function outlinePoints(segs) {
+    var out = [];
+    segs.forEach(function(sg) {
+      if (sg.type === 'line') { out.push({ x: sg.x0, y: sg.y0 }); return; }
+      for (var k = 0; k < 24; k++) { var a = sg.a0 + (sg.a1 - sg.a0) * k / 24; out.push({ x: sg.cx + sg.r * Math.cos(a), y: sg.cy + sg.r * Math.sin(a) }); }
+    });
+    return out;
+  }
+  function pointInOutline(q, poly) {
+    var inside = false;
+    for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      var a = poly[i], b = poly[j];
+      if ((a.y > q.y) !== (b.y > q.y) && q.x < (b.x - a.x) * (q.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+    }
+    return inside;
+  }
+  // Whether a copy (moved and turned) reaches outside the next bigger one.
+  function echoesCross(p, plan) {
+    if (plan.list.length < 2) return false;
+    var gen = makeQuickCutGenerator(state.isImperial);
+    var placed = plan.list.map(function(ec) {
+      var segs = echoShapeOutline(p, ec.params);
+      return segs ? outlinePoints(gen.placeSegs(segs, ec.dx, ec.dy, ec.turn)) : null;
+    });
+    for (var i = 0; i + 1 < placed.length; i++) {
+      var a = placed[i], b = placed[i + 1];
+      if (a && b && a.some(function(q) { return !pointInOutline(q, b); })) return true;
+    }
+    return false;
   }
   function wireEchoes(p, update) {
     var pre = 'qc-' + p + '-echo-';
@@ -8461,7 +8516,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     if (rect.stepoverPct != null)   $('qc-rect-stepover').value = rect.stepoverPct;
     hydrateTabs('rect', rect.tabs);
     hydratePattern('rect', rect.pattern);
-    hydrateEchoes('rect', rect.echoes);
+    hydrateEchoes('rect', rect.echoes, loaded && !!saved.rectangle);
 
     var circ = saved.circle || {};
     if (circ.diameter != null)      $('qc-circ-diameter').value = roundDisplay(mmToDisplay(circ.diameter));
@@ -8490,7 +8545,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     showChamferFields();
     hydrateTabs('circ', circ.tabs);
     hydratePattern('circ', circ.pattern);
-    hydrateEchoes('circ', circ.echoes);
+    hydrateEchoes('circ', circ.echoes, loaded && !!saved.circle);
 
     var plan = saved.planer || {};
     if (plan.mode)               $('qc-plan-mode').value     = plan.mode;
@@ -8559,7 +8614,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     if (poly.stepoverPct != null)   $('qc-poly-stepover').value = poly.stepoverPct;
     hydrateTabs('poly', poly.tabs);
     hydratePattern('poly', poly.pattern);
-    hydrateEchoes('poly', poly.echoes);
+    hydrateEchoes('poly', poly.echoes, loaded && !!saved.polygon);
 
     var slt = saved.slot || {};
     if (slt.slotType)               $('qc-slt-type').value     = slt.slotType;
@@ -16330,11 +16385,11 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       var shift;
       if (shape === 'rectangle') {
         positions = withShapeTurn(positions, params.startAngleDeg);
-        shift = resolveShapeOrigin(params, positions, rectangleShapeBbox(params), rectangleCorners(params)).shift;
+        shift = resolveShapeOrigin(params, positions, echoBbox(rectangleShapeBbox(params), echoPlanFor('rectangle', params), rectangleShapeBbox, params.startAngleDeg), rectangleCorners(params)).shift;
       } else if (shape === 'polygon') {
-        shift = resolveShapeOrigin(params, positions, polygonShapeBbox(params), polygonCorners(params)).shift;
+        shift = resolveShapeOrigin(params, positions, echoBbox(polygonShapeBbox(params), echoPlanFor('polygon', params), polygonShapeBbox), polygonCorners(params)).shift;
       } else if (shape === 'circle') {
-        shift = resolveShapeOrigin(params, positions, circleShapeBbox(params), circleCorners(params)).shift;
+        shift = resolveShapeOrigin(params, positions, echoBbox(circleShapeBbox(params), echoPlanFor('circle', params), circleShapeBbox), circleCorners(params)).shift;
       } else if (shape === 'slot') {
         var cl = slotCenterline(params);
         if (slotProblem(params, cl, slotHalfWidth(params))) return { x: 0, y: 0 };
@@ -16384,16 +16439,17 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       var unitsLabel = isImperial ? 'inch' : 'mm';
       var positions = withShapeTurn(computePatternPositions(params.pattern), params.startAngleDeg);
       var baseGeom = computeRectangleGeom(params);
+      var echoes = echoPlan(params, 'rectangle', echoFits('rectangle'));
+      var rectBox = echoBbox(rectangleShapeBbox(params), echoes, rectangleShapeBbox, params.startAngleDeg);
 
       var extras = [
         'Size: ' + params.width + unitsLabel + ' x ' + params.height + unitsLabel,
         'Corner Radius: ' + (params.cornerRadius || 0) + unitsLabel + bitCornerNote(params, unitsLabel) +
           (Number(params.startAngleDeg) ? ', Start Angle: ' + Number(params.startAngleDeg) + '°' : ''),
         'Depth: ' + params.depth + unitsLabel + ', Step: ' + params.depthOfCut + unitsLabel,
-        'Origin: ' + resolveShapeOrigin(params, positions, rectangleShapeBbox(params), rectangleCorners(params)).label
+        'Origin: ' + resolveShapeOrigin(params, positions, rectBox, rectangleCorners(params)).label
       ];
       if (positions.length > 1) extras.push('Pattern: ' + patternDescription(params.pattern));
-      var echoes = echoPlan(params, 'rectangle', echoFits('rectangle'));
       if (echoNote(params, echoes, unitsLabel)) extras.push(echoNote(params, echoes, unitsLabel));
       var tabNotes = tabHeaderNotes(params, rectangleSegments(baseGeom), extras);
 
@@ -16413,7 +16469,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
 
       // Origin is applied to the WHOLE pattern's aggregate bounding box,
       // not to each instance individually — see computePatternAnchorShift.
-      var shift = resolveShapeOrigin(params, positions, rectangleShapeBbox(params), rectangleCorners(params)).shift;
+      var shift = resolveShapeOrigin(params, positions, rectBox, rectangleCorners(params)).shift;
       for (var p = 0; p < positions.length; p++) {
         var pos = positions[p];
         var mx = pos.x + shift.x;
@@ -16662,15 +16718,15 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       var unitsLabel = isImperial ? 'inch' : 'mm';
       var positions = computePatternPositions(params.pattern);
       var baseGeom = computeCircleGeom(params);
+      var echoes = echoPlan(params, 'circle', echoFits('circle'));
 
-      var placed = resolveShapeOrigin(params, positions, circleShapeBbox(params), circleCorners(params));
+      var placed = resolveShapeOrigin(params, positions, echoBbox(circleShapeBbox(params), echoes, circleShapeBbox), circleCorners(params));
       var extras = [
         'Diameter: ' + params.diameter + unitsLabel,
         'Depth: ' + params.depth + unitsLabel + ', Step: ' + params.depthOfCut + unitsLabel,
         'Origin: ' + placed.label
       ];
       if (positions.length > 1) extras.push('Pattern: ' + patternDescription(params.pattern));
-      var echoes = echoPlan(params, 'circle', echoFits('circle'));
       if (echoNote(params, echoes, unitsLabel)) extras.push(echoNote(params, echoes, unitsLabel));
       var tabNotes = tabHeaderNotes(params, circleSegments(baseGeom), extras);
 
@@ -18069,6 +18125,8 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       var unitsLabel = isImperial ? 'inch' : 'mm';
       var positions = computePatternPositions(params.pattern);
       var baseGeom = computePolygonGeom(params);
+      var echoes = echoPlan(params, 'polygon', echoFits('polygon'));
+      var polyBox = echoBbox(polygonShapeBbox(params), echoes, polygonShapeBbox);
 
       var polyDiameter = params.diameter != null ? params.diameter : params.radius * 2;
       var extras = [
@@ -18081,10 +18139,9 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
           (baseGeom.cornerR > 0 || bitCornerNote(params, unitsLabel)
             ? ', Corner Radius: ' + baseGeom.cornerR + unitsLabel + bitCornerNote(params, unitsLabel) : ''),
         'Depth: ' + params.depth + unitsLabel + ', Step: ' + params.depthOfCut + unitsLabel,
-        'Origin: ' + resolveShapeOrigin(params, positions, polygonShapeBbox(params), polygonCorners(params)).label
+        'Origin: ' + resolveShapeOrigin(params, positions, polyBox, polygonCorners(params)).label
       ];
       if (positions.length > 1) extras.push('Pattern: ' + patternDescription(params.pattern));
-      var echoes = echoPlan(params, 'polygon', echoFits('polygon'));
       if (echoNote(params, echoes, unitsLabel)) extras.push(echoNote(params, echoes, unitsLabel));
       var tabNotes = tabHeaderNotes(params, polygonSegments(baseGeom), extras);
 
@@ -18102,7 +18159,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       lines.push.apply(lines, tabNotes);
       lines.push.apply(lines, startupBlock(params));
 
-      var shift = resolveShapeOrigin(params, positions, polygonShapeBbox(params), polygonCorners(params)).shift;
+      var shift = resolveShapeOrigin(params, positions, polyBox, polygonCorners(params)).shift;
       for (var p = 0; p < positions.length; p++) {
         var pos = positions[p];
         var mx = pos.x + shift.x;
@@ -18952,7 +19009,8 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       var cutType = params.cutType === 'outer' ? 'outer' : 'inner';
       var r = params.bitDiameter / 2;
       var n = Math.max(3, Math.min(12, Math.floor(params.sides || 5)));
-      var placed = resolveShapeOrigin(params, positions, polygonShapeBbox(params), polygonCorners(params));
+      var echoes = echoPlan(params, 'star', echoFits('star'));
+      var placed = resolveShapeOrigin(params, positions, echoBbox(polygonShapeBbox(params), echoes, polygonShapeBbox), polygonCorners(params));
       var extras = [
         'Points: ' + n + ', Diameter: ' + params.diameter + unitsLabel + ' (points), ' + params.innerDiameter + unitsLabel + ' (inner corners)',
         'Start Angle: ' + (params.startAngleDeg || 0) + '°',
@@ -18960,7 +19018,6 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
         'Origin: ' + placed.label
       ];
       if (positions.length > 1) extras.push('Pattern: ' + patternDescription(params.pattern));
-      var echoes = echoPlan(params, 'star', echoFits('star'));
       if (echoNote(params, echoes, unitsLabel)) extras.push(echoNote(params, echoes, unitsLabel));
       var valid = params.innerDiameter > 0 && params.innerDiameter < params.diameter;
       var base = valid ? starOutline(params, cutType === 'outer' ? r : -r) : null;
@@ -19075,19 +19132,42 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
         return !!starOutline(p, (p.cutType === 'outer' ? 1 : -1) * p.bitDiameter / 2);
       };
     }
+    // The shape's box grown to take in its echoes (each turned and moved),
+    // so the origin is a corner of all of them, as a pattern's is. `rot`:
+    // the shape's own turn (the Rectangle's Start Angle), which the box is
+    // in, so a shift along machine X/Y is turned back into it.
+    function echoBbox(bbox, plan, bboxOf, rot) {
+      if (plan.list.length < 2) return bbox;
+      var a = -(rot || 0) * Math.PI / 180, out = { minX: bbox.minX, maxX: bbox.maxX, minY: bbox.minY, maxY: bbox.maxY };
+      plan.list.forEach(function(ec) {
+        if (!ec.k) return;
+        var b = rotatedBbox(bboxOf(ec.params), ec.turn);
+        var dx = ec.dx * Math.cos(a) - ec.dy * Math.sin(a), dy = ec.dx * Math.sin(a) + ec.dy * Math.cos(a);
+        out.minX = Math.min(out.minX, b.minX + dx); out.maxX = Math.max(out.maxX, b.maxX + dx);
+        out.minY = Math.min(out.minY, b.minY + dy); out.maxY = Math.max(out.maxY, b.maxY + dy);
+      });
+      return out;
+    }
+    // A shape's echoes as its origin and box see them.
+    function echoPlanFor(shape, params) {
+      var sh = shape === 'polygon' && params.kind === 'star' ? 'star'
+        : shape === 'rectangle' && (params.triangle || isSmoothKind(params) || isTrapezoid(params)) ? null : shape;
+      return sh ? echoPlan(params, sh, echoFits(sh)) : { list: [{ k: 0, params: params, dx: 0, dy: 0, turn: 0 }], skipped: 0 };
+    }
     // The program's line about them.
     function echoNote(params, plan, unitsLabel) {
       var e = params.echoes;
       if (!e || !e.enabled || !(e.copies >= 1)) return null;
       var made = plan.list.length - 1;
       return 'Echoes: ' + made + ' ' + (e.direction === 'outside' ? 'outside' : 'inside') + ', ' +
-        (e.stepMode === 'ratio' ? 'each ' + e.step + '% of the last' : e.step + unitsLabel + ' apart, ' + (e.spacing === 'scale' ? 'scaled' : 'offset')) +
-        (Number(e.shiftX) || Number(e.shiftY) ? ', shift X' + (Number(e.shiftX) || 0) + ' Y' + (Number(e.shiftY) || 0) : '') +
+        (e.stepMode === 'ratio' ? 'each ' + r4(e.step) + '% of the last' : r4(e.step) + unitsLabel + ' apart, ' + (e.spacing === 'scale' ? 'scaled' : 'offset')) +
+        (Number(e.shiftX) || Number(e.shiftY) ? ', shift X' + r4(Number(e.shiftX) || 0) + ' Y' + r4(Number(e.shiftY) || 0) : '') +
         (Number(e.turn) ? ', turn ' + Number(e.turn) + '°' : '') +
         (plan.skipped ? ', ' + plan.skipped + ' too small left out' : '');
     }
+    function r4(v) { return parseFloat(Number(v).toFixed(4)); }
     function echoComment(ec, plan) {
-      return '(' + (ec.k ? 'Echo ' + ec.k : 'Shape') + ' of ' + plan.list.length + ')';
+      return '(' + (ec.k ? 'Echo ' + ec.k : 'The shape') + ': cut ' + (plan.list.indexOf(ec) + 1) + ' of ' + plan.list.length + ')';
     }
 
     // === SLOT ================================================================
