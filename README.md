@@ -9,7 +9,7 @@ Quick G-code for the everyday CNC jobs (shapes, holes, surfacing, edge work) str
 - [Install](#install)
 - [Quick start](#quick-start)
 - [Shapes](#shapes)
-- [Setting up a cut](#setting-up-a-cut): [cut types](#cut-types), [previews](#the-previews), [origin and inset](#origin-and-inset), [depth](#depth-and-passes), [entering the cut](#entering-the-cut), [holding tabs](#holding-tabs), [corner relief](#corner-relief), [chamfer](#chamfer), [patterns](#patterns), [echoes](#echoes)
+- [Setting up a cut](#setting-up-a-cut): [cut types](#cut-types), [previews](#the-previews), [origin and inset](#origin-and-inset), [depth](#depth-and-passes), [entering the cut](#entering-the-cut), [holding tabs](#holding-tabs), [corner relief](#corner-relief), [chamfer](#chamfer), [patterns](#patterns), [concentric](#concentric-copies)
 - Shapes in detail: [Slot](#slot), [Keyhole](#keyhole), [Drill](#drill)
 - [Tools: Planer, Jointer, Cutter](#tools-planer-jointer-cutter)
 - [Recipes](#recipes)
@@ -188,16 +188,16 @@ Switching converts the number so the copies stay put, and a negative number runs
 
 **The pattern preview** shows every copy as you type, each with its own outline, so you can see the stock left between parts, and the pattern's overall size under the copy count. Where copies overlap, the overlap is tinted yellow: holes or pockets running into each other, or an Outer cut eating into the next part. Twist it to turn the Angle (Circular: Start Angle). Above 500 copies it shows only where each copy starts; above 3000 it shows the count. Tapping a point on the shape preview still picks a point of the first copy, so every dot there stays useful with a pattern on.
 
-### Echoes
+### Concentric Copies
 
-The **Echoes** card (Circle, Rectangle, Polygon and Star) cuts the shape and copies of it stepping inside or outside it: concentric circles, nested frames, a star inside a star, or with a turn, twisted squares and star spirals.
+The **Concentric Copies** card (Circle, Rectangle, Polygon and Star) cuts the shape and copies of it stepping inside or outside it: concentric circles, nested frames, a star inside a star, or with a turn, twisted squares and star spirals.
 
 - **Copies:** how many besides the shape. **Direction:** **Inside**, each smaller than the last, or **Outside**, each bigger.
 - **Step** (a menu): the distance from one copy to the next, 1 in or 25 mm to start; or **Ratio (%)**, each copy that share of the last inside (the last over it outside).
 - **Spacing:** **Offset** moves the outline in or out by the Step, like a contour: corners round outward and sharpen inward. **Scale** makes the same shape smaller or bigger about its center (a circle's or polygon's radius, a rectangle's half its longer side, changes by the Step), so a star keeps its points. A Ratio step always scales. A circle is the same either way. A star keeps its shape either way, but Offset moves its edges by the Step, and since they sit close to its center, its points move much farther: inside, an Offset star shrinks fast, and few copies fit.
 - **Shift X / Y** and **Turn:** each copy moved and turned this much more than the last.
 
-They're cut smallest first. Copies too small for the shape or the bit are left out, and the card says how many fit; it also warns when copies cross (from a Shift or Turn: with an Inside cut they'd cut into the part), when Outside copies are closer than the bit plus 3 mm (thin rings held only by tabs), and when a Pattern doesn't leave room for outside echoes. The origin (X0 Y0 at a corner or edge) is taken from the shape and its echoes together; each gets the shape's own depth passes and Holding Tabs, and with a Pattern each copy of the pattern gets them. The program header adds a line like `(Echoes: 3 inside, 25mm apart, offset)`. Not with Pocket, a chamfer, or the Rectangle's other kinds yet. The plan, and what may come next (a depth step per copy for terraces), is in [docs/echoes.md](docs/echoes.md).
+They're cut smallest first. Copies too small for the shape or the bit are left out, and the card says how many fit; it also warns when copies cross (from a Shift or Turn: with an Inside cut they'd cut into the part), when Outside copies are closer than the bit plus 3 mm (thin rings held only by tabs), and when a Pattern doesn't leave room for outside concentric. The origin (X0 Y0 at a corner or edge) is taken from the shape and its concentric together; each gets the shape's own depth passes and Holding Tabs, and with a Pattern each copy of the pattern gets them. The program header adds a line like `(Concentric copies: 3 inside, 25mm apart, offset)`. Not with Pocket, a chamfer, or the Rectangle's other kinds yet. The plan, and what may come next (a depth step per copy for terraces), is in [docs/concentric-copies.md](docs/concentric-copies.md).
 
 ## Slot
 
