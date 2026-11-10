@@ -2015,6 +2015,9 @@
   .qc-shp-bit { fill: url(#qc-rect-rod); stroke: rgba(0,0,0,.35); stroke-width: 0.4; }
   /* Cutter's look: the waste hatched; the slot the bit cuts opens behind it. */
   .qc-shp-big .qc-shp-hole { fill: var(--qc-m-hole); }
+  /* Echoes: the copies' outlines, dashed in the accent color. */
+  .qc-shp-big .qc-shp-echo { fill: none; stroke: var(--color-accent, #1abc9c); stroke-width: 0.45; stroke-dasharray: 1.6 1; }
+  .qc-echo-note { margin: 6px 0 0 !important; font-size: 0.8rem; line-height: 1.4 !important; color: var(--color-text-secondary, #888); }
   .qc-shp-big .qc-shp-dimcircle { stroke-dasharray: 1.2 1.2; }
   .qc-shp-big .qc-shp-kerfcut { fill: none; stroke: var(--qc-m-hole); stroke-linejoin: round; }
   .qc-shape-preview-cell .qc-tab-band { fill: none; stroke: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface-muted, var(--color-surface))); stroke-opacity: 0.85; stroke-linecap: butt; stroke-linejoin: round; }
@@ -4067,6 +4070,7 @@
       console.warn('[QuickCut] firmware fetch failed, wasteboard limits unknown:', err);
     }
     renderOriginPickers();
+    buildEchoCards();
     if (state.isImperial) convertDefaultsToInches();
     // The pattern menus exist before saved settings set them.
     wirePatternAxisModes();
@@ -4110,6 +4114,9 @@
     wireHoldingTabs('circ', updateCirclePreview);
     wireHoldingTabs('poly', updatePolygonPreview);
     wireHoldingTabs('slt', updateSlotPreview);
+    wireEchoes('rect', updateRectanglePreview);
+    wireEchoes('circ', updateCirclePreview);
+    wireEchoes('poly', updatePolygonPreview);
     mountPatternPreviews();
     wirePreviewEnlarge();
     wireLoad();
@@ -4603,6 +4610,9 @@
   }
 
   function validationRules() {
+    return Object.assign(shapeValidationRules(), echoValidationRules());
+  }
+  function shapeValidationRules() {
     // Distance ranges in DISPLAY units. Feed rate is unit-dependent
     // (mm/min vs in/min) so its min swings by ~25x between systems.
     if (state.isImperial) {
@@ -5709,6 +5719,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       // Percent of bit diameter — 40 = 40% engagement (60% overlap).
       stepoverPct:  num('qc-rect-stepover', 40),
       pattern:      readPatternForm('rect'),
+      echoes:       readEchoForm('rect'),
       isImperial:      state.isImperial,
       safeZHeightMm:   state.safeZHeightMm
     }));
@@ -5768,6 +5779,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       stepoverPct:  num('qc-circ-stepover', 40),
       chamfer:      readChamferForm('circ'),
       pattern:      readPatternForm('circ'),
+      echoes:       readEchoForm('circ'),
       isImperial:      state.isImperial,
       safeZHeightMm:   state.safeZHeightMm
     }));
@@ -6043,6 +6055,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       depthOfCut:    num('qc-poly-step', 0),
       stepoverPct:   num('qc-poly-stepover', 40),
       pattern:       readPatternForm('poly'),
+      echoes:        readEchoForm('poly'),
       isImperial:    state.isImperial,
       safeZHeightMm: state.safeZHeightMm
     }));
@@ -6067,6 +6080,185 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
   // Style values: 'linear' | 'circular' | 'circular-follow'.
   // 'circular-follow' rotates each instance to point outward from the
   // pattern center (rest is identical to 'circular').
+  // ---------- Echoes ----------
+  // Copies of the shape stepping inside or outside it (the generator's
+  // echoPlan), on Circle, the plain Rectangle, Polygon and Star. A card
+  // after each Pattern card, built from one template.
+  var ECHO_TABS = ['rect', 'circ', 'poly'];
+  function echoCardHtml(p) {
+    var id = function(k) { return 'qc-' + p + '-echo-' + k; };
+    var field = function(label, k, html) { return '<div class="qc-field"><label for="' + id(k) + '">' + label + '</label>' + html + '</div>'; };
+    var text = function(k, value, unit, title) {
+      return '<input class="qc-input" type="text" autocomplete="off" spellcheck="false"' + (unit ? ' data-unit="length"' : '') + ' id="' + id(k) + '" value="' + value + '" title="' + title + '">';
+    };
+    return '<div class="qc-card qc-section-card qc-echo-card" id="' + id('card') + '">' +
+      '<div class="qc-card-header"><h3 class="qc-card-title">Echoes</h3>' +
+      '<label class="qc-switch" title="Copies of this shape stepping inside or outside it"><input type="checkbox" id="' + id('enable') + '"><span class="qc-switch-track"></span></label></div>' +
+      '<div class="qc-echo-body" id="' + id('body') + '" style="display: none;">' +
+      '<div class="qc-row-3">' +
+      field('Copies', 'copies', '<input class="qc-input" type="number" id="' + id('copies') + '" min="1" max="50" step="1" value="3" title="How many copies besides the shape itself.">') +
+      field('Direction', 'direction', '<select class="qc-select" id="' + id('direction') + '" title="Inside: each copy smaller than the last. Outside: each bigger."><option value="inside" selected>Inside</option><option value="outside">Outside</option></select>') +
+      field('Spacing', 'spacing', '<select class="qc-select" id="' + id('spacing') + '" title="Offset: each outline moved the Step in or out, as a contour: corners round outward and sharpen inward. Scale: the same shape made smaller or bigger about its center, so a star keeps its points; its size (a circle&rsquo;s or polygon&rsquo;s radius, a rectangle&rsquo;s half its longer side) changes by the Step. A Ratio step always scales."><option value="offset" selected>Offset</option><option value="scale">Scale</option></select>') +
+      '</div><div class="qc-row-3">' +
+      '<div class="qc-field"><select class="qc-label-select" id="' + id('step-mode') + '" aria-label="Step set by" title="Step: the distance from one copy to the next. Ratio: each copy this percentage of the last (inside), or the last over this percentage (outside).">' +
+      '<option value="distance" selected>Step</option><option value="ratio">Ratio (%)</option></select>' +
+      text('step', 25, true, 'The distance between copies, or with Ratio the percentage.').replace('>', ' aria-labelledby="' + id('step-mode') + '">') + '</div>' +
+      field('Shift X', 'shift-x', text('shift-x', 0, true, 'Each copy&rsquo;s center moved this much more along X than the last (a tunnel or drift).')) +
+      field('Shift Y', 'shift-y', text('shift-y', 0, true, 'Each copy&rsquo;s center moved this much more along Y than the last.')) +
+      '</div><div class="qc-row-3">' +
+      field('Turn (&deg;)', 'turn', '<input class="qc-input" type="number" id="' + id('turn') + '" step="1" value="0" title="Each copy turned this much more than the last, CCW (twisted squares, star spirals). A circle doesn&rsquo;t show it.">') +
+      '</div><p class="qc-echo-note" id="' + id('note') + '"></p></div></div>';
+  }
+  function buildEchoCards() {
+    ECHO_TABS.forEach(function(p) {
+      var pattern = $('qc-' + p + '-pattern-enable');
+      if (pattern && !$('qc-' + p + '-echo-card')) pattern.closest('.qc-card').insertAdjacentHTML('afterend', echoCardHtml(p));
+    });
+  }
+  function echoShape(p) {
+    if (p === 'circ') return 'circle';
+    if (p === 'rect') return rectKind() === 'rectangle' ? 'rectangle' : null;
+    return polyKind() === 'star' ? 'star' : 'polygon';
+  }
+  // Why Echoes can't apply here, or null.
+  function echoBlocked(p) {
+    if (!echoShape(p)) return 'Echoes work on the plain Rectangle for now: pick Rectangle in the title.';
+    if ($('qc-' + p + '-cut-type').value === 'clearing') return 'Not with Pocket yet: pick Inside or Outside.';
+    if (readChamferForm(p).width > 0) return 'Not while chamfering.';
+    return null;
+  }
+  function echoIsRatio(p) { return $('qc-' + p + '-echo-step-mode').value === 'ratio'; }
+  function readEchoForm(p) {
+    if (!$('qc-' + p + '-echo-enable') || !$('qc-' + p + '-echo-enable').checked || echoBlocked(p)) return { enabled: false };
+    return {
+      enabled: true,
+      copies: Math.floor(num('qc-' + p + '-echo-copies', 0)),
+      direction: $('qc-' + p + '-echo-direction').value,
+      stepMode: $('qc-' + p + '-echo-step-mode').value,
+      step: num('qc-' + p + '-echo-step', 0),
+      spacing: $('qc-' + p + '-echo-spacing').value,
+      shiftX: num('qc-' + p + '-echo-shift-x', 0),
+      shiftY: num('qc-' + p + '-echo-shift-y', 0),
+      turn: num('qc-' + p + '-echo-turn', 0)
+    };
+  }
+  // Saved in mm (a ratio as it is), switched on or off as the card is.
+  function packEchoes(p) {
+    var ratio = echoIsRatio(p);
+    return {
+      enabled: $('qc-' + p + '-echo-enable').checked,
+      copies: Math.floor(num('qc-' + p + '-echo-copies', 3)),
+      direction: $('qc-' + p + '-echo-direction').value,
+      stepMode: ratio ? 'ratio' : 'distance',
+      step: ratio ? num('qc-' + p + '-echo-step', 80) : displayToMm(num('qc-' + p + '-echo-step', 0)),
+      spacing: $('qc-' + p + '-echo-spacing').value,
+      shiftX: displayToMm(num('qc-' + p + '-echo-shift-x', 0)),
+      shiftY: displayToMm(num('qc-' + p + '-echo-shift-y', 0)),
+      turn: num('qc-' + p + '-echo-turn', 0)
+    };
+  }
+  function hydrateEchoes(p, e) {
+    if (!e || !$('qc-' + p + '-echo-enable')) return;
+    var pre = 'qc-' + p + '-echo-';
+    $(pre + 'enable').checked = !!e.enabled;
+    if (e.copies != null) $(pre + 'copies').value = e.copies;
+    if (e.direction) $(pre + 'direction').value = e.direction === 'outside' ? 'outside' : 'inside';
+    if (e.spacing) $(pre + 'spacing').value = e.spacing === 'scale' ? 'scale' : 'offset';
+    setEchoStepMode(p, e.stepMode === 'ratio' ? 'ratio' : 'distance');
+    if (e.step != null) $(pre + 'step').value = e.stepMode === 'ratio' ? e.step : roundDisplay(mmToDisplay(e.step));
+    if (e.shiftX != null) $(pre + 'shift-x').value = roundDisplay(mmToDisplay(e.shiftX));
+    if (e.shiftY != null) $(pre + 'shift-y').value = roundDisplay(mmToDisplay(e.shiftY));
+    if (e.turn != null) $(pre + 'turn').value = e.turn;
+    updateEchoCard(p);
+  }
+  // A ratio has no unit, so the field stops converting typed units.
+  function setEchoStepMode(p, mode) {
+    var sel = $('qc-' + p + '-echo-step-mode'), el = $('qc-' + p + '-echo-step');
+    sel.value = mode;
+    if (mode === 'ratio') el.removeAttribute('data-unit'); else el.setAttribute('data-unit', 'length');
+    $('qc-' + p + '-echo-spacing').disabled = mode === 'ratio';
+    sel.setAttribute('data-was', mode);
+  }
+  function echoValidationRules() {
+    var rules = {}, big = state.isImperial ? 200 : 5000;
+    ECHO_TABS.forEach(function(p) {
+      var pre = 'qc-' + p + '-echo-';
+      if (!$(pre + 'enable')) return;
+      rules[pre + 'copies'] = { min: 1, max: 50, label: 'Copies', integer: true };
+      rules[pre + 'step'] = echoIsRatio(p) ? { min: 1, max: 99, label: 'Ratio' } : { min: state.isImperial ? 0.001 : 0.01, max: big, label: 'Step' };
+      rules[pre + 'shift-x'] = { min: -big, max: big, label: 'Shift X' };
+      rules[pre + 'shift-y'] = { min: -big, max: big, label: 'Shift Y' };
+      rules[pre + 'turn'] = { min: -360, max: 360, label: 'Turn' };
+    });
+    return rules;
+  }
+  var ECHO_READERS = { rect: function() { return readRectangleForm(); }, circ: function() { return readCircleForm(); }, poly: function() { return readPolygonForm(); } };
+  // The card open or shut, and its note: why it can't apply here, or how
+  // many copies fit.
+  function updateEchoCard(p) {
+    var pre = 'qc-' + p + '-echo-';
+    if (!$(pre + 'enable')) return;
+    var on = $(pre + 'enable').checked;
+    $(pre + 'body').style.display = on ? '' : 'none';
+    var note = $(pre + 'note'), blocked = echoBlocked(p);
+    if (!on) { note.textContent = ''; return; }
+    if (blocked) { note.textContent = blocked; return; }
+    var params = ECHO_READERS[p](), shape = echoShape(p), gen = makeQuickCutGenerator(state.isImperial);
+    var plan = gen.echoPlan(params, shape, gen.echoFits(shape)), made = plan.list.length - 1;
+    note.textContent = made + (made === 1 ? ' copy' : ' copies') + ', cut smallest first' +
+      (plan.skipped ? '; ' + plan.skipped + ' too small for the shape or the bit, left out' : '') + '.';
+  }
+  function wireEchoes(p, update) {
+    var pre = 'qc-' + p + '-echo-';
+    if (!$(pre + 'enable')) return;
+    var refresh = function() { updateEchoCard(p); update(); schedulePatternPreview(); };
+    $(pre + 'enable').addEventListener('change', refresh);
+    $(pre + 'step-mode').addEventListener('change', function() {
+      var mode = $(pre + 'step-mode').value;
+      setEchoStepMode(p, mode);
+      $(pre + 'step').value = mode === 'ratio' ? 80 : state.isImperial ? 1 : 25;
+      recheckField(pre + 'step');
+      refresh();
+    });
+    ['copies', 'direction', 'spacing', 'step', 'shift-x', 'shift-y', 'turn'].forEach(function(k) {
+      $(pre + k).addEventListener('input', refresh);
+      $(pre + k).addEventListener('change', refresh);
+    });
+    // What the note depends on elsewhere on the tab.
+    ROOT.addEventListener('input', function(evt) { if (evt.target.id && evt.target.id.indexOf('qc-' + p + '-') === 0) updateEchoCard(p); });
+    ROOT.addEventListener('change', function() { updateEchoCard(p); });
+    updateEchoCard(p);
+  }
+  // For the top view: the copies' outlines in the shape's own frame,
+  // from `outlineOf(params)`. `turn` is the view's own turn (the
+  // Rectangle's Start Angle), which a machine X/Y shift is undone by.
+  // A rectangle's outline about its center, CCW, its corners rounded.
+  function rectangleOutline(gen, W, H, cr) {
+    var part = [{ x: -W / 2, y: -H / 2 }, { x: W / 2, y: -H / 2 }, { x: W / 2, y: H / 2 }, { x: -W / 2, y: H / 2 }];
+    var normals = [{ x: 0, y: -1 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }];
+    return gen.convexOutline(part, normals, 0, Math.min(Math.max(0, cr || 0), Math.min(W, H) / 2));
+  }
+  // Segments as a closed SVG path on copy Ti (topView's segsD, for the
+  // Rectangle's own view).
+  function echoPathD(segs, Ti, s) {
+    var P = function(x, y) { var t = Ti(x * s, -y * s); return t.x.toFixed(2) + ',' + t.y.toFixed(2); };
+    return segs.map(function(sg, i) {
+      var head = i ? '' : 'M' + (sg.type === 'line' ? P(sg.x0, sg.y0) : P(sg.cx + sg.r * Math.cos(sg.a0), sg.cy + sg.r * Math.sin(sg.a0)));
+      if (sg.type === 'line') return head + ' L' + P(sg.x1, sg.y1);
+      return head + ' A' + (sg.r * s).toFixed(2) + ',' + (sg.r * s).toFixed(2) + ' 0 ' + (Math.abs(sg.a1 - sg.a0) > Math.PI ? 1 : 0) + ' ' +
+        (sg.dir === -1 || sg.a1 < sg.a0 ? 1 : 0) + ' ' + P(sg.cx + sg.r * Math.cos(sg.a1), sg.cy + sg.r * Math.sin(sg.a1));
+    }).join(' ') + ' Z';
+  }
+  function echoOutlines(p, params, outlineOf, turn) {
+    var shape = echoShape(p);
+    if (!shape || !params.echoes || !params.echoes.enabled) return null;
+    var gen = makeQuickCutGenerator(state.isImperial), a = -(turn || 0) * Math.PI / 180;
+    return gen.echoPlan(params, shape, gen.echoFits(shape)).list.filter(function(ec) { return ec.k > 0; }).map(function(ec) {
+      var segs = outlineOf(ec.params);
+      return segs ? gen.placeSegs(segs, ec.dx * Math.cos(a) - ec.dy * Math.sin(a), ec.dx * Math.sin(a) + ec.dy * Math.cos(a), ec.turn) : null;
+    }).filter(Boolean);
+  }
+
   function readPatternForm(prefix) {
     var pre = 'qc-' + prefix + '-pattern-';
     var hexTrimEl = $(pre + 'hex-trim');
@@ -8295,6 +8487,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     if (rect.stepoverPct != null)   $('qc-rect-stepover').value = rect.stepoverPct;
     hydrateTabs('rect', rect.tabs);
     hydratePattern('rect', rect.pattern);
+    hydrateEchoes('rect', rect.echoes);
 
     var circ = saved.circle || {};
     if (circ.diameter != null)      $('qc-circ-diameter').value = roundDisplay(mmToDisplay(circ.diameter));
@@ -8323,6 +8516,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     showChamferFields();
     hydrateTabs('circ', circ.tabs);
     hydratePattern('circ', circ.pattern);
+    hydrateEchoes('circ', circ.echoes);
 
     var plan = saved.planer || {};
     if (plan.mode)               $('qc-plan-mode').value     = plan.mode;
@@ -8407,6 +8601,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     if (poly.stepoverPct != null)   $('qc-poly-stepover').value = poly.stepoverPct;
     hydrateTabs('poly', poly.tabs);
     hydratePattern('poly', poly.pattern);
+    hydrateEchoes('poly', poly.echoes);
 
     var slt = saved.slot || {};
     if (slt.slotType)               $('qc-slt-type').value     = slt.slotType;
@@ -8587,7 +8782,8 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
         depthOfCut:   displayToMm(params.depthOfCut),
         stepoverPct:  params.stepoverPct,
         tabs:         packTabsForm('rect'),
-        pattern:      packPattern(params.pattern)
+        pattern:      packPattern(params.pattern),
+        echoes:       packEchoes('rect')
       };
     } else if (params.shape === 'circle') {
       body.circle = {
@@ -8600,7 +8796,8 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
         depthOfCut:   displayToMm(params.depthOfCut),
         stepoverPct:  params.stepoverPct,
         tabs:         packTabsForm('circ'),
-        pattern:      packPattern(params.pattern)
+        pattern:      packPattern(params.pattern),
+        echoes:       packEchoes('circ')
       };
     } else if (params.shape === 'planer') {
       body.planer = {
@@ -8666,7 +8863,8 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
         depthOfCut:    displayToMm(params.depthOfCut),
         stepoverPct:   params.stepoverPct,
         tabs:          packTabsForm('poly'),
-        pattern:       packPattern(params.pattern)
+        pattern:       packPattern(params.pattern),
+        echoes:        packEchoes('poly')
       };
     } else if (params.shape === 'slot') {
       body.slot = {
@@ -11619,6 +11817,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     var gen = makeQuickCutGenerator(state.isImperial), params = readRectangleForm();
     var sized = W > 0 && H > 0, Wm = sized ? W : 50, Hm = sized ? H : 30;
     var copies = sized ? gen.computePatternPositions(params.pattern) : [{ x: 0, y: 0, rotDeg: 0 }];
+    var rectEchoes = sized ? echoOutlines('rect', params, function(q) { return rectangleOutline(gen, q.width, q.height, q.cornerRadius); }, turn) : null;
     var total = copies.length;
     if (total > RECT_PREVIEW_MAX) copies = copies.slice(0, 1);
     var p0 = copies[0];
@@ -11650,6 +11849,16 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(function(k) {
         var m = mpt(i, k[0] * (Wm / 2 + reach), k[1] * (Hm / 2 + reach));
         mb.x0 = Math.min(mb.x0, m.x); mb.x1 = Math.max(mb.x1, m.x); mb.y0 = Math.min(mb.y0, m.y); mb.y1 = Math.max(mb.y1, m.y);
+      });
+    });
+    (rectEchoes || []).forEach(function(segs) {
+      copies.forEach(function(q, i) {
+        segs.forEach(function(sg) {
+          (sg.type === 'line' ? [[sg.x0, sg.y0], [sg.x1, sg.y1]] : [[sg.cx - sg.r, sg.cy - sg.r], [sg.cx + sg.r, sg.cy + sg.r], [sg.cx - sg.r, sg.cy + sg.r], [sg.cx + sg.r, sg.cy - sg.r]]).forEach(function(k) {
+            var m = mpt(i, k[0], k[1]);
+            mb.x0 = Math.min(mb.x0, m.x); mb.x1 = Math.max(mb.x1, m.x); mb.y0 = Math.min(mb.y0, m.y); mb.y1 = Math.max(mb.y1, m.y);
+          });
+        });
       });
     });
     var s = Math.min(70 / Math.max(1e-6, mb.x1 - mb.x0), 52 / Math.max(1e-6, mb.y1 - mb.y0));
@@ -11836,6 +12045,9 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       }).join('');
     }
     var parts = outlines.map(function(o) { return '<path class="qc-shp-outline" d="' + o + '"/>'; }).join('');
+    var echoSvg = (rectEchoes || []).length ? copies.map(function(q, i) {
+      return rectEchoes.map(function(segs) { return '<path class="qc-shp-echo" d="' + echoPathD(segs, Tc(i), s) + '"/>'; }).join('');
+    }).join('') : '';
 
     // Width and Height of the first copy, outside its edges, in pills.
     var u = state.unitLabel, F = function(v) { return v.toFixed(2); };
@@ -11888,6 +12100,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     var capText = (total > 1 ? total + ' copies · ' : '') + (sized ? roundDisplay(W) + ' × ' + roundDisplay(H) + ' ' + u : '') +
       (chf ? ' · ' + roundDisplay(Math.max(0, num('qc-chamfer-width', 0))) + ' ' + u + ' chamfer'
         : ' · ' + { outer: 'outside cut', inner: 'inside cut', clearing: 'pocket' }[cutType]) +
+      ((rectEchoes || []).length ? ' · ' + rectEchoes.length + (rectEchoes.length === 1 ? ' echo' : ' echoes') : '') +
       (total > RECT_PREVIEW_MAX ? ' · first copy shown' : '');
     var cap = '<text class="qc-shp-cap" x="' + F((sxA + sxB) / 2) + '" y="' + F(syB + 5.5) + '" text-anchor="middle">' + capText + '</text>';
 
@@ -11906,7 +12119,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       '<linearGradient id="qc-rect-rod" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8f98a5"/><stop offset=".45" stop-color="#f3f5f8"/><stop offset="1" stop-color="#7d8693"/></linearGradient></defs>';
     svg.innerHTML =
       shapePreviewDefs('qc-rect') + defs +
-      waste + (chf ? '' : parts + ideal) +
+      waste + (chf ? '' : parts + echoSvg + ideal) +
       dims + cap +
       rectBit() +
       rectOriginCross();
@@ -11991,9 +12204,15 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       var q = copies[i], a = ((q.rotDeg || 0) + turn) * Math.PI / 180, ca = Math.cos(a), sa = Math.sin(a);
       return { x: q.x - p0.x + lx * ca - ly * sa, y: q.y - p0.y + lx * sa + ly * ca };
     }
-    var mb = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+    var mb = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity }, bb = { x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 };
+    (sh.echoes || []).forEach(function(segs) {
+      segs.forEach(function(sg) {
+        var pts = sg.type === 'line' ? [[sg.x0, sg.y0], [sg.x1, sg.y1]] : [[sg.cx - sg.r, sg.cy - sg.r], [sg.cx + sg.r, sg.cy + sg.r]];
+        pts.forEach(function(q) { bb.x0 = Math.min(bb.x0, q[0]); bb.x1 = Math.max(bb.x1, q[0]); bb.y0 = Math.min(bb.y0, q[1]); bb.y1 = Math.max(bb.y1, q[1]); });
+      });
+    });
     copies.forEach(function(q, i) {
-      [[b.x0 - reach, b.y0 - reach], [b.x1 + reach, b.y0 - reach], [b.x1 + reach, b.y1 + reach], [b.x0 - reach, b.y1 + reach]].forEach(function(k) {
+      [[bb.x0 - reach, bb.y0 - reach], [bb.x1 + reach, bb.y0 - reach], [bb.x1 + reach, bb.y1 + reach], [bb.x0 - reach, bb.y1 + reach]].forEach(function(k) {
         var m = mpt(i, k[0], k[1]);
         mb.x0 = Math.min(mb.x0, m.x); mb.x1 = Math.max(mb.x1, m.x); mb.y0 = Math.min(mb.y0, m.y); mb.y1 = Math.max(mb.y1, m.y);
       });
@@ -12143,6 +12362,9 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       }).join('');
     }
     var parts = outlines.map(function(o) { return '<path class="qc-shp-outline" d="' + o + '"/>'; }).join('');
+    var echoSvg = (sh.echoes || []).length ? copies.map(function(q, i) {
+      return sh.echoes.map(function(segs) { return '<path class="qc-shp-echo" d="' + segsD(segs, Tc(i), true) + '"/>'; }).join('');
+    }).join('') : '';
 
     // What a shape's pills and tabs work with: the front-most (iw),
     // left-most (ih) and back-most (it) copies, so pills sit clear of the
@@ -12163,6 +12385,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     var dims = sh.dims(c);
     var kind = chf ? roundDisplay(Math.max(0, num('qc-chamfer-width', 0))) + ' ' + u + ' chamfer' : { outer: 'outside cut', inner: 'inside cut', clearing: 'pocket', center: 'center line' }[cutType];
     var capText = (total > 1 ? total + ' copies · ' : '') + sh.caption + (kind ? ' · ' + kind : '') +
+      ((sh.echoes || []).length ? ' · ' + sh.echoes.length + (sh.echoes.length === 1 ? ' echo' : ' echoes') : '') +
       (total > RECT_PREVIEW_MAX ? ' · first copy shown' : '');
     var cap = '<text class="qc-shp-cap" x="' + F((sxA + sxB) / 2) + '" y="' + F(syB + 5.5) + '" text-anchor="middle">' + capText + '</text>';
     sh.nodes(c);
@@ -12196,7 +12419,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       (z ? originZoom(sh.prefix, oq.x, oq.y, bitEdge(edgeD, cutType) + '<path class="qc-shape-fill" d="' + outline + '"/>' + ideal, zpts, z, sh.prefix, s) : '');
     var over = sh.overlay ? copies.map(function(q, i) { return sh.overlay(c, Tc(i)); }).join('') : '';
     svg.innerHTML = shapePreviewDefs('qc-' + sh.prefix) + defs + waste +
-      (chf ? '' : parts + over + ideal + ($('qc-' + sh.prefix + '-tabs-enable') ? sh.tabs(c).map(function(segs) { return tabMarks(sh.prefix, segs, segs.real); }).join('') : '')) + dims + cap + bit + origin;
+      (chf ? '' : parts + echoSvg + over + ideal + ($('qc-' + sh.prefix + '-tabs-enable') ? sh.tabs(c).map(function(segs) { return tabMarks(sh.prefix, segs, segs.real); }).join('') : '')) + dims + cap + bit + origin;
     svg.setAttribute('viewBox', [sxA - 3, syA - 3, sxB - sxA + 6, syB - syA + 13].map(function(v) { return v.toFixed(2); }).join(' '));
     figPills(svg, '.qc-shp-dimtext, .qc-inset-label');
   }
@@ -12264,6 +12487,12 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     topView(svg, {
       prefix: 'poly', params: params, cutType: cutType, copies: gen.computePatternPositions(params.pattern),
       chamfer: state.chamferMode === 'polygon',
+      echoes: echoOutlines('poly', params, function(q) {
+        var qR = q.radius != null ? q.radius : q.diameter / 2, pts = [];
+        for (var j = 0; j < n; j++) pts.push({ x: qR * Math.cos(start + j * 2 * Math.PI / n), y: qR * Math.sin(start + j * 2 * Math.PI / n) });
+        var nm = pts.map(function(v, j) { var w = pts[(j + 1) % n], len = Math.hypot(w.x - v.x, w.y - v.y) || 1; return { x: (w.y - v.y) / len, y: -(w.x - v.x) / len }; });
+        return gen.convexOutline(pts, nm, 0, Math.min(Math.max(0, q.cornerRadius || 0), qR * Math.cos(Math.PI / n)));
+      }),
       box: box, typedCR: typedCR, mostCR: apothem, relief: relief, reliefPts: part, deep: apothem,
       CR: relief ? typedCR : Math.min(previewCornerRadius(params.cornerRadius, cutType), apothem),
       offset: offset,
@@ -12310,6 +12539,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     topView(svg, {
       prefix: 'poly', params: params, cutType: cutType, copies: gen.computePatternPositions(params.pattern),
       chamfer: state.chamferMode === 'polygon',
+      echoes: echoOutlines('poly', params, function(q) { return gen.starOutline(q, 0); }),
       box: box, smooth: true, typedCR: 0, CR: 0, deep: lo,
       offset: function(dd) { return gen.starOutline(params, dd); },
       caption: verts.length / 2 + '-point star ' + roundDisplay(D) + ' / ' + roundDisplay(d) + ' ' + state.unitLabel,
@@ -12512,6 +12742,10 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     topView(svg, {
       prefix: 'rect', params: params, cutType: cutType, turn: params.startAngleDeg || 0, copies: gen.computePatternPositions(params.pattern),
       chamfer: state.chamferMode === 'rectangle',
+      echoes: echoOutlines('rect', params, function(q) {
+        var g = gen.computeTrapezoidGeom(q);
+        return gen.convexOutline(g.part, g.normals, 0, Math.max(0, q.cornerRadius || 0));
+      }, params.startAngleDeg),
       box: box, smooth: smooth, typedCR: typedCR, mostCR: most, relief: relief, reliefPts: part, deep: geo.maxInset,
       CR: relief ? typedCR : Math.min(previewCornerRadius(params.cornerRadius, cutType), most),
       offset: function(d, cr) { return gen.convexOutline(part, normals, d, cr); },
@@ -12624,6 +12858,7 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
     topView(svg, {
       prefix: 'circ', params: params, cutType: cutType, copies: gen.computePatternPositions(params.pattern),
       chamfer: state.chamferMode === 'circle',
+      echoes: echoOutlines('circ', params, function(q) { return ring(q.diameter / 2); }),
       box: { x0: -R, x1: R, y0: -R, y1: R }, smooth: true, typedCR: 0, CR: 0, deep: R,
       offset: function(d) { return ring(R + d); },
       caption: 'circle ⌀' + roundDisplay(D) + ' ' + state.unitLabel,
@@ -16286,6 +16521,8 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
         'Origin: ' + resolveShapeOrigin(params, positions, rectangleShapeBbox(params), rectangleCorners(params)).label
       ];
       if (positions.length > 1) extras.push('Pattern: ' + patternDescription(params.pattern));
+      var echoes = echoPlan(params, 'rectangle', echoFits('rectangle'));
+      if (echoNote(params, echoes, unitsLabel)) extras.push(echoNote(params, echoes, unitsLabel));
       var tabNotes = tabHeaderNotes(params, rectangleSegments(baseGeom), extras);
 
       var lines = programHeader(params, {
@@ -16314,7 +16551,10 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
           lines.push('(Instance ' + (p + 1) + '/' + positions.length +
                      ' at X' + mx.toFixed(3) + ' Y' + my.toFixed(3) + rotStr + ')');
         }
-        emitOneRectangle(lines, params, mx, my, pos.rotDeg);
+        echoes.list.forEach(function(ec) {
+          if (echoes.list.length > 1) lines.push(echoComment(ec, echoes));
+          emitOneRectangle(lines, ec.params, mx + ec.dx, my + ec.dy, (pos.rotDeg || 0) + ec.turn);
+        });
       }
 
       lines.push('');
@@ -16558,6 +16798,8 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
         'Origin: ' + placed.label
       ];
       if (positions.length > 1) extras.push('Pattern: ' + patternDescription(params.pattern));
+      var echoes = echoPlan(params, 'circle', echoFits('circle'));
+      if (echoNote(params, echoes, unitsLabel)) extras.push(echoNote(params, echoes, unitsLabel));
       var tabNotes = tabHeaderNotes(params, circleSegments(baseGeom), extras);
 
       var lines = programHeader(params, {
@@ -16583,7 +16825,10 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
           lines.push('(Instance ' + (p + 1) + '/' + positions.length +
                      ' at X' + mx.toFixed(3) + ' Y' + my.toFixed(3) + ')');
         }
-        emitOneCircle(lines, params, mx, my);
+        echoes.list.forEach(function(ec) {
+          if (echoes.list.length > 1) lines.push(echoComment(ec, echoes));
+          emitOneCircle(lines, ec.params, mx + ec.dx, my + ec.dy);
+        });
       }
 
       lines.push('');
@@ -17967,6 +18212,8 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
         'Origin: ' + resolveShapeOrigin(params, positions, polygonShapeBbox(params), polygonCorners(params)).label
       ];
       if (positions.length > 1) extras.push('Pattern: ' + patternDescription(params.pattern));
+      var echoes = echoPlan(params, 'polygon', echoFits('polygon'));
+      if (echoNote(params, echoes, unitsLabel)) extras.push(echoNote(params, echoes, unitsLabel));
       var tabNotes = tabHeaderNotes(params, polygonSegments(baseGeom), extras);
 
       var lines = programHeader(params, {
@@ -17993,8 +18240,10 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
           lines.push('(Instance ' + (p + 1) + '/' + positions.length +
                      ' at X' + mx.toFixed(3) + ' Y' + my.toFixed(3) + rotStr + ')');
         }
-        var geom = computePolygonGeom(params, mx, my, pos.rotDeg);
-        emitOnePolygon(lines, params, geom);
+        echoes.list.forEach(function(ec) {
+          if (echoes.list.length > 1) lines.push(echoComment(ec, echoes));
+          emitOnePolygon(lines, ec.params, computePolygonGeom(ec.params, mx + ec.dx, my + ec.dy, (pos.rotDeg || 0) + ec.turn));
+        });
       }
 
       lines.push('');
@@ -18839,6 +19088,8 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
         'Origin: ' + placed.label
       ];
       if (positions.length > 1) extras.push('Pattern: ' + patternDescription(params.pattern));
+      var echoes = echoPlan(params, 'star', echoFits('star'));
+      if (echoNote(params, echoes, unitsLabel)) extras.push(echoNote(params, echoes, unitsLabel));
       var valid = params.innerDiameter > 0 && params.innerDiameter < params.diameter;
       var base = valid ? starOutline(params, cutType === 'outer' ? r : -r) : null;
       var tabNotes = base ? tabHeaderNotes(params, base, extras) : [];
@@ -18859,11 +19110,112 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
           var rotStr = pos.rotDeg ? (' rot=' + pos.rotDeg.toFixed(3) + '°') : '';
           lines.push('(Instance ' + (p + 1) + '/' + positions.length + ' at X' + mx.toFixed(3) + ' Y' + my.toFixed(3) + rotStr + ')');
         }
-        emitOneTrapezoid(lines, params, { segs: placeSegs(base, mx, my, pos.rotDeg), toolRadius: r, rounded: true, allCorners: false });
+        echoes.list.forEach(function(ec) {
+          if (echoes.list.length > 1) lines.push(echoComment(ec, echoes));
+          var segs = ec.k ? starOutline(ec.params, cutType === 'outer' ? r : -r) : base;
+          emitOneTrapezoid(lines, ec.params, { segs: placeSegs(segs, mx + ec.dx, my + ec.dy, (pos.rotDeg || 0) + ec.turn), toolRadius: r, rounded: true, allCorners: false });
+        });
       }
       lines.push('');
       lines.push.apply(lines, programFooter(params));
       return lines.join('\n');
+    }
+
+    // === ECHOES ==============================================================
+    //
+    // Copies of a shape stepping inside or outside it (params.echoes:
+    // { enabled, copies, direction 'inside'|'outside', stepMode
+    // 'distance'|'ratio', step: a length, or with ratio a percentage,
+    // spacing 'offset'|'scale', shiftX, shiftY, turn }). Offset: the outline
+    // moved `step` in or out per copy, so corners round outward and sharpen
+    // inward; Scale: the same shape smaller or bigger about its center, its
+    // size (a circle's or polygon's radius, a rectangle's half its longer
+    // side) `step` less or more per copy. Ratio: each copy step% of the
+    // last inside, or the last over step% outside. Each copy also moves by
+    // shiftX, shiftY and turns by `turn` degrees more than the last.
+    // `shape`: 'circle', 'rectangle', 'polygon' or 'star'.
+    function echoSize(params, shape) {
+      if (shape === 'rectangle') return Math.max(params.width, params.height) / 2;
+      if (shape === 'polygon' && params.radius != null) return params.radius;
+      return (params.diameter || 0) / 2;
+    }
+    function scaledShape(params, shape, f) {
+      if (!(f > 0) || !isFinite(f)) return null;
+      var p = Object.assign({}, params, { echoes: null });
+      if (shape === 'rectangle') {
+        p.width = params.width * f; p.height = params.height * f; p.cornerRadius = (params.cornerRadius || 0) * f;
+      } else {
+        p.diameter = (params.diameter || 0) * f;
+        if (params.radius != null) p.radius = params.radius * f;
+        if (params.innerDiameter) p.innerDiameter = params.innerDiameter * f;
+        if (params.cornerRadius) p.cornerRadius = params.cornerRadius * f;
+        if (params.sizeValue) p.sizeValue = params.sizeValue * f;
+      }
+      return p;
+    }
+    // A star's (and a circle's) edges all sit as far from its center, so
+    // moving them d out is scaling it about the center.
+    function offsetShape(params, shape, d) {
+      if (shape === 'circle') return params.diameter + 2 * d > 0 ? Object.assign({}, params, { echoes: null, diameter: params.diameter + 2 * d }) : null;
+      if (shape === 'star') {
+        var v = starVertices(params), a = v[0], b = v[1], len = Math.hypot(b.x - a.x, b.y - a.y);
+        var h = len > 0 ? Math.abs(a.x * b.y - a.y * b.x) / len : 0;
+        return h > 0 ? scaledShape(params, shape, (h + d) / h) : null;
+      }
+      var p = Object.assign({}, params, { echoes: null });
+      p.cornerRadius = Math.max(0, (params.cornerRadius || 0) + d);
+      if (shape === 'rectangle') {
+        p.width = params.width + 2 * d; p.height = params.height + 2 * d;
+        return p.width > 0 && p.height > 0 ? p : null;
+      }
+      var n = Math.max(3, Math.min(12, Math.floor(params.sides || 6)));
+      var R = params.radius != null ? params.radius : (params.diameter || 0) / 2;
+      var R2 = (R * Math.cos(Math.PI / n) + d) / Math.cos(Math.PI / n);
+      if (!(R2 > 0) || !(R > 0)) return null;
+      p.radius = R2; p.diameter = 2 * R2;
+      if (params.sizeValue) p.sizeValue = params.sizeValue * R2 / R;
+      return p;
+    }
+    // The shape and its copies in cutting order, smallest first, each
+    // { k, params, dx, dy, turn } (k 0: the shape itself), leaving out copies
+    // too small to be the shape or too small for the bit (`fits`).
+    function echoPlan(params, shape, fits) {
+      var e = params.echoes, list = [{ k: 0, params: params, dx: 0, dy: 0, turn: 0 }], skipped = 0;
+      if (!e || !e.enabled) return { list: list, skipped: 0 };
+      var copies = Math.max(0, Math.min(50, Math.floor(e.copies || 0)));
+      var sign = e.direction === 'outside' ? 1 : -1, step = Number(e.step) || 0, ratio = e.stepMode === 'ratio';
+      if (!(step > 0) || (ratio && !(step < 100))) return { list: list, skipped: copies };
+      var size = echoSize(params, shape);
+      for (var k = 1; k <= copies; k++) {
+        var p = ratio ? scaledShape(params, shape, Math.pow(step / 100, sign < 0 ? k : -k))
+          : e.spacing === 'scale' ? scaledShape(params, shape, size > 0 ? (size + sign * k * step) / size : 0)
+          : offsetShape(params, shape, sign * k * step);
+        if (!p || (fits && !fits(p))) { skipped++; continue; }
+        list.push({ k: k, params: p, dx: k * (Number(e.shiftX) || 0), dy: k * (Number(e.shiftY) || 0), turn: k * (Number(e.turn) || 0) });
+      }
+      return { list: sign < 0 ? list.reverse() : list, skipped: skipped };
+    }
+    function echoFits(shape) {
+      return function(p) {
+        if (shape === 'circle') return computeCircleGeom(p).pathRadius > 0;
+        if (shape === 'rectangle') { var g = computeRectangleGeom(p); return g.halfW > 0 && g.halfH > 0; }
+        if (shape === 'polygon') return computePolygonGeom(p).pathRadius > 0;
+        return !!starOutline(p, (p.cutType === 'outer' ? 1 : -1) * p.bitDiameter / 2);
+      };
+    }
+    // The program's line about them.
+    function echoNote(params, plan, unitsLabel) {
+      var e = params.echoes;
+      if (!e || !e.enabled || !(e.copies >= 1)) return null;
+      var made = plan.list.length - 1;
+      return 'Echoes: ' + made + ' ' + (e.direction === 'outside' ? 'outside' : 'inside') + ', ' +
+        (e.stepMode === 'ratio' ? 'each ' + e.step + '% of the last' : e.step + unitsLabel + ' apart, ' + (e.spacing === 'scale' ? 'scaled' : 'offset')) +
+        (Number(e.shiftX) || Number(e.shiftY) ? ', shift X' + (Number(e.shiftX) || 0) + ' Y' + (Number(e.shiftY) || 0) : '') +
+        (Number(e.turn) ? ', turn ' + Number(e.turn) + '°' : '') +
+        (plan.skipped ? ', ' + plan.skipped + ' too small left out' : '');
+    }
+    function echoComment(ec, plan) {
+      return '(' + (ec.k ? 'Echo ' + ec.k : 'Shape') + ' of ' + plan.list.length + ')';
     }
 
     // === SLOT ================================================================
@@ -19398,6 +19750,9 @@ if (typeof window !== 'undefined') window.NcUnitInput = NcUnitInput;
       convexShapeProblem: convexShapeProblem,
       starVertices: starVertices,
       starOutline: starOutline,
+      echoPlan: echoPlan,
+      echoFits: echoFits,
+      placeSegs: placeSegs,
       solveTriangle: solveTriangle,
       triangleMeasures: triangleMeasures,
       computeTrapezoidGeom: computeTrapezoidGeom,
