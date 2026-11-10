@@ -9,7 +9,7 @@ Quick G-code for the everyday CNC jobs (shapes, holes, surfacing, edge work) str
 - [Install](#install)
 - [Quick start](#quick-start)
 - [Shapes](#shapes)
-- [Setting up a cut](#setting-up-a-cut): [cut types](#cut-types), [previews](#the-previews), [origin and inset](#origin-and-inset), [depth](#depth-and-passes), [entering the cut](#entering-the-cut), [holding tabs](#holding-tabs), [corner relief](#corner-relief), [chamfer](#chamfer), [patterns](#patterns)
+- [Setting up a cut](#setting-up-a-cut): [cut types](#cut-types), [previews](#the-previews), [origin and inset](#origin-and-inset), [depth](#depth-and-passes), [entering the cut](#entering-the-cut), [holding tabs](#holding-tabs), [corner relief](#corner-relief), [chamfer](#chamfer), [patterns](#patterns), [echoes](#echoes)
 - Shapes in detail: [Slot](#slot), [Keyhole](#keyhole), [Drill](#drill)
 - [Tools: Planer, Jointer, Cutter](#tools-planer-jointer-cutter)
 - [Recipes](#recipes)
@@ -187,6 +187,17 @@ Switching converts the number so the copies stay put, and a negative number runs
 **Circular.** **Total Angle** (default 360°) is the arc the copies are spread over, counter-clockwise from the Start Angle: 360° spaces them evenly all the way round; less puts the first and last copy at the ends of the arc (5 copies over 90° are 22.5° apart); negative runs clockwise. The **Radius** label is a menu: **Center Radius** is to each copy's center; **Inside Radius** is to the nearest edge of any copy, the clear circle left in the middle (e.g. around a center hole); **Outside Radius** is to the farthest edge, so the pattern fits in a circle that size. The header adds `total=90°` when it isn't 360.
 
 **The pattern preview** shows every copy as you type, each with its own outline, so you can see the stock left between parts, and the pattern's overall size under the copy count. Where copies overlap, the overlap is tinted yellow: holes or pockets running into each other, or an Outer cut eating into the next part. Twist it to turn the Angle (Circular: Start Angle). Above 500 copies it shows only where each copy starts; above 3000 it shows the count. Tapping a point on the shape preview still picks a point of the first copy, so every dot there stays useful with a pattern on.
+
+### Echoes
+
+The **Echoes** card (Circle, Rectangle, Polygon and Star) cuts the shape and copies of it stepping inside or outside it: concentric circles, nested frames, a star inside a star, or with a turn, twisted squares and star spirals.
+
+- **Copies:** how many besides the shape. **Direction:** **Inside**, each smaller than the last, or **Outside**, each bigger.
+- **Step** (a menu): the distance from one copy to the next, 1 in or 25 mm to start; or **Ratio (%)**, each copy that share of the last inside (the last over it outside).
+- **Spacing:** **Offset** moves the outline in or out by the Step, like a contour: corners round outward and sharpen inward. **Scale** makes the same shape smaller or bigger about its center (a circle's or polygon's radius, a rectangle's half its longer side, changes by the Step), so a star keeps its points. A Ratio step always scales. A circle or a star is the same either way.
+- **Shift X / Y** and **Turn:** each copy moved and turned this much more than the last.
+
+They're cut smallest first. Copies too small for the shape or the bit are left out, and the card says how many fit; each gets the shape's own depth passes and Holding Tabs, and with a Pattern each copy of the pattern gets them. The program header adds a line like `(Echoes: 3 inside, 25mm apart, offset)`. Not with Pocket, a chamfer, or the Rectangle's other kinds yet. The plan, and what may come next (a depth step per copy for terraces), is in [docs/echoes.md](docs/echoes.md).
 
 ## Slot
 
